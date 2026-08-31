@@ -1,0 +1,137 @@
+// Re-export domain types from ic-mock so the data layer has a stable contract
+// even when mock data goes away.
+export type {
+  Competitor,
+  Alert,
+  Swot,
+  SwotItem,
+  KeywordRow,
+  TimelineItem,
+  ChangeType,
+  Severity,
+  Ad,
+  AdSource,
+  AdCreative,
+  AdSpendEstimate,
+  AdTargeting,
+  Snapshot,
+  SnapshotStructuredData,
+  AdsLinkSuggestion,
+} from "@/lib/ic-mock";
+
+export type LLMProviderId = "lovable" | "anthropic" | "openai" | "gemini";
+
+export type LLMUseCase = "classification" | "swot";
+
+export type LLMModelOption = {
+  id: string;
+  label: string;
+  description?: string;
+  recommendedFor?: LLMUseCase[];
+};
+
+export type LLMSettings = {
+  provider: LLMProviderId;
+  modelClassification: string | null;
+  modelSwot: string | null;
+  hasKeyByProvider: Partial<Record<LLMProviderId, { keyHint: string; createdAt: string }>>;
+};
+
+export type CreateCompetitorInput = {
+  name: string;
+  url: string;
+};
+
+// Scraper providers (BYOK — each user brings their own API key).
+// MVP: apenas firecrawl (landing page) + scrapecreators (Meta + Google ads).
+// scrapfly e similarweb foram removidos — a mudança no schema acontece
+// no PR Lovable (lovable-ads-monitoring-prompt.md).
+export type ScraperProviderId = "firecrawl" | "scrapecreators";
+
+export type ScraperKeySource = "manual" | "lovable_connector";
+
+export type ScraperKeyInfo = {
+  provider: ScraperProviderId;
+  configured: boolean;
+  keyHint: string | null;
+  source: ScraperKeySource | null;
+  updatedAt: string | null;
+};
+
+export type ScraperTestResult =
+  | { ok: true; latencyMs?: number; meta?: Record<string, unknown> }
+  | { ok: false; error: string };
+
+export type DataProvider = {
+  // competitors
+  listCompetitors(): Promise<import("@/lib/ic-mock").Competitor[]>;
+  getCompetitor(id: string): Promise<import("@/lib/ic-mock").Competitor | null>;
+  createCompetitor(input: CreateCompetitorInput): Promise<import("@/lib/ic-mock").Competitor>;
+  toggleCompetitorStatus(id: string): Promise<import("@/lib/ic-mock").Competitor>;
+  deleteCompetitor(id: string): Promise<void>;
+  triggerCrawl(id: string): Promise<{ ok: true; queuedAt: string }>;
+
+  // alerts
+  listAlerts(): Promise<import("@/lib/ic-mock").Alert[]>;
+  markAlertRead(id: string): Promise<void>;
+
+  // swot
+  getSwot(competitorId: string): Promise<import("@/lib/ic-mock").Swot>;
+  generateSwot(competitorId: string): Promise<import("@/lib/ic-mock").Swot>;
+
+  // llm settings
+  getLlmSettings(): Promise<LLMSettings>;
+  setLlmProvider(provider: LLMProviderId): Promise<LLMSettings>;
+  setLlmModel(useCase: LLMUseCase, modelId: string | null): Promise<LLMSettings>;
+  saveLlmKey(provider: LLMProviderId, key: string): Promise<LLMSettings>;
+  deleteLlmKey(provider: LLMProviderId): Promise<LLMSettings>;
+
+  // scraper keys (BYOK)
+  listScraperKeys(): Promise<ScraperKeyInfo[]>;
+  saveScraperKey(
+    provider: ScraperProviderId,
+    key: string,
+    source?: ScraperKeySource,
+  ): Promise<ScraperKeyInfo>;
+  deleteScraperKey(provider: ScraperProviderId): Promise<void>;
+  testScraperKey(
+    provider: ScraperProviderId,
+    keyOverride?: string,
+  ): Promise<ScraperTestResult>;
+
+  // snapshots (resultado do crawl Firecrawl)
+  getLatestSnapshot(
+    competitorId: string,
+  ): Promise<import("@/lib/ic-mock").Snapshot | null>;
+  listSnapshots(
+    competitorId: string,
+    limit?: number,
+  ): Promise<import("@/lib/ic-mock").Snapshot[]>;
+
+  // ads (Meta + Google via ScrapeCreators)
+  listAds(competitorId: string): Promise<import("@/lib/ic-mock").Ad[]>;
+  triggerFetchAds(
+    competitorId: string,
+    options?: { withDetails?: boolean },
+  ): Promise<{
+    ok: true;
+    queuedAt: string;
+    metaCount?: number;
+    googleCount?: number;
+    notes?: string[];
+    sources?: { meta?: string; google?: string };
+    withDetails?: boolean;
+  }>;
+  linkCompetitorAds(
+    competitorId: string,
+    input: { facebookPageId?: string | null; googleAdvertiserId?: string | null },
+  ): Promise<void>;
+
+  // sugestões automáticas (regex + ScrapeCreators search + LLM)
+  getAdsLinkSuggestion(
+    competitorId: string,
+  ): Promise<import("@/lib/ic-mock").AdsLinkSuggestion | null>;
+  triggerSuggestAdsLinks(
+    competitorId: string,
+  ): Promise<import("@/lib/ic-mock").AdsLinkSuggestion | null>;
+};
