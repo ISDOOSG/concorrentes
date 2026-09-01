@@ -41,10 +41,26 @@ das decisões B.1 a D.5 do `05_Pendencias.md`.
 **8012** — nenhum processo a está usando ainda. Reservada só para evitar que
 outro projeto futuro pegue o mesmo número.
 
+## Subdomínio — DECIDIDO em 2026-09-01
+
+| | |
+|---|---|
+| Endereço | `concorrentes.imagohub.com.br` |
+| Registro DNS | `A` → `212.85.17.184`, TTL 360 |
+| Criado por | ele, no painel da Hostinger (`dns-parking.com`), em 01/09 |
+| Estado | resolvendo — conferido em 01/09 contra `1.1.1.1` |
+
+Decisão dele em 01/09: os três projetos são produtos do **ImagoHub**, não do
+Movisat, e cada um ganha subdomínio próprio sob `imagohub.com.br`. Não há
+registro `AAAA` — nenhum domínio da VPS usa IPv6, e este segue a convenção.
+
+⚠️ Isto fecha só o **nome**. O vhost nginx, o certificado e o systemd
+continuam pendentes — ver `05_Pendencias.md`.
+
 ## O que isto NÃO resolve
 
 A correção de `get_llm_key`/`get_scraper_key` (item B.1, crítico — ver
 `04_Acesso_e_Seguranca.md`), a reconstrução do `vite.config.ts` sem
-`@lovable.dev/vite-tanstack-config` (item D.3), nginx, systemd, subdomínio e
+`@lovable.dev/vite-tanstack-config` (item D.3), nginx, systemd e
 o cofre de segredos continuam bloqueados. Isto aqui é só a fundação: o banco
 existe e está pronto para receber o serviço assim que ele for escrito.

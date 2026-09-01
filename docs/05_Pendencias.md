@@ -36,7 +36,7 @@ sem erro, 6 testes funcionais passaram · as 15 tabelas com 0 linhas.
 | **B.2** | **Onde a identidade mora** | `public.usuario` no `DB_SCHEMA.sql` é mínima; o shim `auth.uid()` devolve sempre `NULL`. Login próprio (com hash de senha) precisa ser escrito, e `handle_new_user`/`enforce_invite_only` (hoje triggers em `auth.users`, que não existe fora do Supabase) precisam de equivalente na rotina de cadastro |
 | **B.3** | **Cofre de segredos** | `LLM_KEY_ENCRYPTION_SECRET` era secret do Supabase, lido por `current_setting()` com fallback para `app_config`. Na VPS vira `.env`, padrão do resto dos projetos |
 | **B.4** | **Provedor de IA default** | `generate-swot`/`analyze-*` usam Lovable AI como fallback quando o usuário não tem BYOK — não migra. Trocar por provedor próprio (DeepSeek, já usado pelo MoviChat na VPS?) |
-| **B.5** | **Onde o serviço roda / subdomínio** | ainda não decidido — mesma pendência dos outros dois (possível sub do ImagoHub) |
+| **B.5** | ~~**Onde o serviço roda / subdomínio**~~ ✅ **DECIDIDO 01/09** | `concorrentes.imagohub.com.br` — registro A criado por ele e resolvendo. Ver `06_Provisionamento_VPS.md` |
 | **B.6** | **As 3 tabelas sem FK declarada** (`seo_analyses`, `social_analyses`, `social_snapshots`) | decidir se corrige na migração — não é efeito da conversão, já era assim no Supabase |
 | **B.7** | **O modelo de tenancy** | o PRD diz single-tenant sem roles; o código implementado tem admin/membro/convite. **Decisão: qual dos dois documentos manda daqui pra frente?** Recomendo atualizar o PRD para refletir a realidade, não o contrário |
 | **B.8** | **As 5 features não documentadas na arquitetura** (SEO analysis, social analysis, ads monitoring) | migram junto ou ficam para depois? Elas já são 9 das 12 Edge Functions reais |
@@ -62,7 +62,7 @@ sem erro, 6 testes funcionais passaram · as 15 tabelas com 0 linhas.
 | **D.2** | unit systemd (`--user`), `Restart=on-failure` | idem |
 | **D.3** | 🔴 **Reconstruir `vite.config.ts` sem `@lovable.dev/vite-tanstack-config`** | **achado em 31/08, muda o tamanho do item.** Não é o `lovable-tagger` solto dos outros dois — aqui o `vite.config.ts` inteiro é `export default defineConfig()` de um pacote da Lovable que empacota TanStack Start, React, Tailwind, `tsConfigPaths`, o plugin do Cloudflare e o `componentTagger`, tudo junto. É **trabalho de reconstrução testado**, não faxina: escrever os plugins um a um e confirmar que o build ainda sai igual |
 | **D.4** | Deploy: este projeto usa **Cloudflare Workers**, não só build estático | diferente dos outros dois (que eram SPA puro) — TanStack Start faz SSR. Decidir se a VPS serve isso via Node/SSR próprio ou se vira SPA estático |
-| **D.5** | Onde roda / subdomínio | mesma pendência de B.5 |
+| **D.5** | ~~Onde roda / subdomínio~~ ✅ **DECIDIDO 01/09** | `concorrentes.imagohub.com.br` — ver B.5 |
 
 ---
 
@@ -90,7 +90,7 @@ ser o primeiro item do checklist em qualquer projeto novo.
 
 | Item | Estado |
 |---|---|
-| clone em `/home/claude/concorrentes` | **feito** em 31/08 |
+| clone em `/home/claude/imagohub/concorrentes` | **feito** em 31/08 |
 | banco real + `.env.db`/`.pgpass` | **feito** em 31/08 — ver `06_Provisionamento_VPS.md` |
 | `.gitignore` cobrindo `.pgpass`/`.env.db` | **feito** em 31/08 — confirmado com `git check-ignore` |
 | backup das 02:00 | **ligado** em 31/08 — `empacotar concorrentes` no `backup_projetos.sh`, exclusão de `.pgpass` testada |
