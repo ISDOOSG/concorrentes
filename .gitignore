@@ -48,3 +48,10 @@ dist-ssr
 .env.*
 !.env.example
 .pgpass
+
+# venv da API Python (criada em 01/09)
+api/venv/
+
+# bytecode da API Python
+__pycache__/
+*.py[cod]
