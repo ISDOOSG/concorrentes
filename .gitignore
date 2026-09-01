@@ -30,3 +30,12 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# --- adicionado em 2026-08-31: credencial do banco provisionado na VPS ---
+# .pgpass NAO e pego pela trava de segredo (gate_segredos.py) -- o formato
+# host:porta:banco:usuario:senha nao bate com nenhum padrao dela. .env.db
+# ela pegaria (linha *_SENHA=), mas o .gitignore e a primeira camada, nao a
+# unica. NUNCA remover estas duas linhas.
+.pgpass
+.env.db
+

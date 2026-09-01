@@ -1,0 +1,1022 @@
+t
+# ESQUEMA postgres
+Gerado em 2026-08-31 19:09:07
+Postgres 17.6
+
+## 1. Colunas
+
+| tabela | coluna | tipo | nulo | default |
+|---|---|---|---|---|
+| ads_snapshots | id | uuid | NO | gen_random_uuid() |
+| ads_snapshots | user_id | uuid | NO | - |
+| ads_snapshots | competitor_id | uuid | NO | - |
+| ads_snapshots | source | text | NO | - |
+| ads_snapshots | ad_archive_id | text | NO | - |
+| ads_snapshots | fetched_at | timestamp with time zone | NO | now() |
+| ads_snapshots | fetched_date | date | YES | - |
+| ads_snapshots | active | boolean | YES | - |
+| ads_snapshots | body_text | text | YES | - |
+| ads_snapshots | cta_text | text | YES | - |
+| ads_snapshots | cta_url | text | YES | - |
+| ads_snapshots | page_name | text | YES | - |
+| ads_snapshots | creatives | jsonb | YES | - |
+| ads_snapshots | targeting | jsonb | YES | - |
+| ads_snapshots | spend_estimate | jsonb | YES | - |
+| ads_snapshots | impressions_estimate | jsonb | YES | - |
+| ads_snapshots | start_date | timestamp with time zone | YES | - |
+| ads_snapshots | end_date | timestamp with time zone | YES | - |
+| ads_snapshots | platforms | ARRAY | YES | - |
+| ads_snapshots | raw | jsonb | YES | - |
+| alerts | id | uuid | NO | gen_random_uuid() |
+| alerts | user_id | uuid | NO | - |
+| alerts | change_id | uuid | YES | - |
+| alerts | channel | text | NO | 'in_app'::text |
+| alerts | read_at | timestamp with time zone | YES | - |
+| alerts | created_at | timestamp with time zone | NO | now() |
+| app_config | key | text | NO | - |
+| app_config | value | text | NO | - |
+| changes | id | uuid | NO | gen_random_uuid() |
+| changes | user_id | uuid | NO | - |
+| changes | competitor_id | uuid | NO | - |
+| changes | from_snapshot_id | uuid | NO | - |
+| changes | to_snapshot_id | uuid | NO | - |
+| changes | detected_at | timestamp with time zone | NO | now() |
+| changes | change_type | text | NO | - |
+| changes | severity | text | NO | - |
+| changes | summary | text | NO | - |
+| changes | diff | jsonb | NO | - |
+| changes | alerted | boolean | NO | false |
+| competitors | id | uuid | NO | gen_random_uuid() |
+| competitors | user_id | uuid | NO | - |
+| competitors | name | text | NO | - |
+| competitors | url | text | NO | - |
+| competitors | status | text | NO | 'active'::text |
+| competitors | last_crawled_at | timestamp with time zone | YES | - |
+| competitors | created_at | timestamp with time zone | NO | now() |
+| competitors | crawl_status | text | NO | 'never'::text |
+| competitors | crawl_error | text | YES | - |
+| competitors | crawl_started_at | timestamp with time zone | YES | - |
+| competitors | facebook_page_id | text | YES | - |
+| competitors | google_advertiser_id | text | YES | - |
+| competitors | last_ads_fetched_at | timestamp with time zone | YES | - |
+| competitors | facebook_page_suggestion | text | YES | - |
+| competitors | google_advertiser_suggestion | text | YES | - |
+| competitors | ads_link_confidence | jsonb | YES | - |
+| competitors | ads_link_reasoning | text | YES | - |
+| competitors | ads_link_suggested_at | timestamp with time zone | YES | - |
+| competitors | instagram_handle | text | YES | - |
+| competitors | instagram_handle_suggestion | text | YES | - |
+| competitors | last_instagram_fetched_at | timestamp with time zone | YES | - |
+| invites | id | uuid | NO | gen_random_uuid() |
+| invites | email | text | NO | - |
+| invites | invited_by | uuid | YES | - |
+| invites | created_at | timestamp with time zone | NO | now() |
+| invites | accepted_at | timestamp with time zone | YES | - |
+| profiles | id | uuid | NO | - |
+| profiles | full_name | text | YES | - |
+| profiles | plan | text | NO | 'free'::text |
+| profiles | url_quota | integer | NO | 5 |
+| profiles | created_at | timestamp with time zone | NO | now() |
+| profiles | role | text | NO | 'member'::text |
+| profiles | email | text | YES | - |
+| seo_analyses | id | uuid | NO | gen_random_uuid() |
+| seo_analyses | competitor_id | uuid | NO | - |
+| seo_analyses | user_id | uuid | NO | - |
+| seo_analyses | source_snapshot_id | uuid | YES | - |
+| seo_analyses | model | text | NO | - |
+| seo_analyses | score | integer | YES | - |
+| seo_analyses | summary | text | YES | - |
+| seo_analyses | strengths | jsonb | NO | '[]'::jsonb |
+| seo_analyses | weaknesses | jsonb | NO | '[]'::jsonb |
+| seo_analyses | opportunities | jsonb | NO | '[]'::jsonb |
+| seo_analyses | recommendations | jsonb | NO | '[]'::jsonb |
+| seo_analyses | target_keywords | jsonb | NO | '[]'::jsonb |
+| seo_analyses | meta | jsonb | NO | '{}'::jsonb |
+| seo_analyses | analyzed_at | timestamp with time zone | NO | now() |
+| seo_analyses | created_at | timestamp with time zone | NO | now() |
+| seo_analyses | updated_at | timestamp with time zone | NO | now() |
+| snapshots | id | uuid | NO | gen_random_uuid() |
+| snapshots | user_id | uuid | NO | - |
+| snapshots | competitor_id | uuid | NO | - |
+| snapshots | crawled_at | timestamp with time zone | NO | now() |
+| snapshots | content_hash | text | NO | - |
+| snapshots | raw_text | text | YES | - |
+| snapshots | structured_data | jsonb | YES | - |
+| snapshots | traffic_data | jsonb | YES | - |
+| snapshots | screenshot_path | text | YES | - |
+| snapshots | source | text | NO | - |
+| snapshots | cost_cents | integer | YES | 0 |
+| social_analyses | id | uuid | NO | gen_random_uuid() |
+| social_analyses | user_id | uuid | NO | - |
+| social_analyses | competitor_id | uuid | NO | - |
+| social_analyses | platform | text | NO | 'instagram'::text |
+| social_analyses | source_snapshot_id | uuid | YES | - |
+| social_analyses | model | text | NO | - |
+| social_analyses | summary | text | YES | - |
+| social_analyses | cadence | jsonb | NO | '{}'::jsonb |
+| social_analyses | format_mix | jsonb | NO | '{}'::jsonb |
+| social_analyses | themes | jsonb | NO | '[]'::jsonb |
+| social_analyses | engagement | jsonb | NO | '{}'::jsonb |
+| social_analyses | top_posts | jsonb | NO | '[]'::jsonb |
+| social_analyses | insights | jsonb | NO | '[]'::jsonb |
+| social_analyses | cost_cents | integer | NO | 0 |
+| social_analyses | analyzed_at | timestamp with time zone | NO | now() |
+| social_analyses | created_at | timestamp with time zone | NO | now() |
+| social_analyses | updated_at | timestamp with time zone | NO | now() |
+| social_snapshots | id | uuid | NO | gen_random_uuid() |
+| social_snapshots | user_id | uuid | NO | - |
+| social_snapshots | competitor_id | uuid | NO | - |
+| social_snapshots | platform | text | NO | 'instagram'::text |
+| social_snapshots | handle | text | NO | - |
+| social_snapshots | fetched_at | timestamp with time zone | NO | now() |
+| social_snapshots | fetched_date | date | NO | (now())::date |
+| social_snapshots | followers | integer | YES | - |
+| social_snapshots | following | integer | YES | - |
+| social_snapshots | posts_count | integer | YES | - |
+| social_snapshots | is_verified | boolean | YES | - |
+| social_snapshots | is_business | boolean | YES | - |
+| social_snapshots | bio | text | YES | - |
+| social_snapshots | external_url | text | YES | - |
+| social_snapshots | category | text | YES | - |
+| social_snapshots | profile_pic_url | text | YES | - |
+| social_snapshots | recent_posts | jsonb | NO | '[]'::jsonb |
+| social_snapshots | raw | jsonb | YES | - |
+| social_snapshots | cost_credits | integer | NO | 1 |
+| swot_reports | id | uuid | NO | gen_random_uuid() |
+| swot_reports | user_id | uuid | NO | - |
+| swot_reports | competitor_id | uuid | NO | - |
+| swot_reports | generated_at | timestamp with time zone | NO | now() |
+| swot_reports | strengths | jsonb | NO | - |
+| swot_reports | weaknesses | jsonb | NO | - |
+| swot_reports | opportunities | jsonb | NO | - |
+| swot_reports | threats | jsonb | NO | - |
+| swot_reports | llm_model | text | NO | - |
+| swot_reports | cost_cents | integer | YES | 0 |
+| user_llm_keys | user_id | uuid | NO | - |
+| user_llm_keys | provider | text | NO | - |
+| user_llm_keys | encrypted_key | bytea | NO | - |
+| user_llm_keys | key_hint | text | YES | - |
+| user_llm_keys | created_at | timestamp with time zone | NO | now() |
+| user_llm_settings | user_id | uuid | NO | - |
+| user_llm_settings | provider | text | NO | 'lovable'::text |
+| user_llm_settings | model_classification | text | YES | - |
+| user_llm_settings | model_swot | text | YES | - |
+| user_llm_settings | updated_at | timestamp with time zone | NO | now() |
+| user_scraper_keys | user_id | uuid | NO | - |
+| user_scraper_keys | provider | text | NO | - |
+| user_scraper_keys | encrypted_key | bytea | NO | - |
+| user_scraper_keys | key_hint | text | YES | - |
+| user_scraper_keys | source | text | NO | 'manual'::text |
+| user_scraper_keys | created_at | timestamp with time zone | NO | now() |
+| user_scraper_keys | updated_at | timestamp with time zone | NO | now() |
+
+## 2. Constraints (PK, FK com ON DELETE, UNIQUE, CHECK)
+
+| tabela | nome | tipo | definicao |
+|---|---|---|---|
+| ads_snapshots | ads_snapshots_competitor_id_fkey | FK | FOREIGN KEY (competitor_id) REFERENCES competitors(id) ON DELETE CASCADE |
+| ads_snapshots | ads_snapshots_pkey | PK | PRIMARY KEY (id) |
+| ads_snapshots | ads_snapshots_source_check | CHECK | CHECK ((source = ANY (ARRAY['meta'::text, 'google'::text]))) |
+| ads_snapshots | ads_snapshots_user_id_fkey | FK | FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE CASCADE |
+| alerts | alerts_change_id_fkey | FK | FOREIGN KEY (change_id) REFERENCES changes(id) ON DELETE CASCADE |
+| alerts | alerts_pkey | PK | PRIMARY KEY (id) |
+| alerts | alerts_user_id_fkey | FK | FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE CASCADE |
+| app_config | app_config_pkey | PK | PRIMARY KEY (key) |
+| changes | changes_change_type_check | CHECK | CHECK ((change_type = ANY (ARRAY['price'::text, 'copy'::text, 'feature'::text, 'design'::text, 'traffic'::text]))) |
+| changes | changes_competitor_id_fkey | FK | FOREIGN KEY (competitor_id) REFERENCES competitors(id) ON DELETE CASCADE |
+| changes | changes_from_snapshot_id_fkey | FK | FOREIGN KEY (from_snapshot_id) REFERENCES snapshots(id) ON DELETE CASCADE |
+| changes | changes_pkey | PK | PRIMARY KEY (id) |
+| changes | changes_severity_check | CHECK | CHECK ((severity = ANY (ARRAY['info'::text, 'warning'::text, 'critical'::text]))) |
+| changes | changes_to_snapshot_id_fkey | FK | FOREIGN KEY (to_snapshot_id) REFERENCES snapshots(id) ON DELETE CASCADE |
+| changes | changes_user_id_fkey | FK | FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE CASCADE |
+| competitors | competitors_crawl_status_check | CHECK | CHECK ((crawl_status = ANY (ARRAY['never'::text, 'queued'::text, 'running'::text, 'success'::text, 'failed'::text]))) |
+| competitors | competitors_pkey | PK | PRIMARY KEY (id) |
+| competitors | competitors_status_check | CHECK | CHECK ((status = ANY (ARRAY['active'::text, 'paused'::text]))) |
+| competitors | competitors_user_id_fkey | FK | FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE CASCADE |
+| competitors | competitors_user_id_url_key | UNIQUE | UNIQUE (user_id, url) |
+| invites | invites_email_key | UNIQUE | UNIQUE (email) |
+| invites | invites_invited_by_fkey | FK | FOREIGN KEY (invited_by) REFERENCES auth.users(id) ON DELETE SET NULL |
+| invites | invites_pkey | PK | PRIMARY KEY (id) |
+| profiles | profiles_id_fkey | FK | FOREIGN KEY (id) REFERENCES auth.users(id) ON DELETE CASCADE |
+| profiles | profiles_pkey | PK | PRIMARY KEY (id) |
+| profiles | profiles_plan_check | CHECK | CHECK ((plan = ANY (ARRAY['free'::text, 'pro'::text]))) |
+| profiles | profiles_role_check | CHECK | CHECK ((role = ANY (ARRAY['admin'::text, 'member'::text]))) |
+| seo_analyses | seo_analyses_competitor_id_fkey | FK | FOREIGN KEY (competitor_id) REFERENCES competitors(id) ON DELETE CASCADE |
+| seo_analyses | seo_analyses_pkey | PK | PRIMARY KEY (id) |
+| seo_analyses | seo_analyses_source_snapshot_id_fkey | FK | FOREIGN KEY (source_snapshot_id) REFERENCES snapshots(id) ON DELETE SET NULL |
+| snapshots | snapshots_competitor_id_fkey | FK | FOREIGN KEY (competitor_id) REFERENCES competitors(id) ON DELETE CASCADE |
+| snapshots | snapshots_pkey | PK | PRIMARY KEY (id) |
+| snapshots | snapshots_source_check | CHECK | CHECK ((source = ANY (ARRAY['firecrawl'::text, 'scrapfly'::text, 'direct'::text]))) |
+| snapshots | snapshots_user_id_fkey | FK | FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE CASCADE |
+| social_analyses | social_analyses_pkey | PK | PRIMARY KEY (id) |
+| social_snapshots | social_snapshots_pkey | PK | PRIMARY KEY (id) |
+| social_snapshots | social_snapshots_unique_daily | UNIQUE | UNIQUE (competitor_id, platform, fetched_date) |
+| swot_reports | swot_reports_competitor_id_fkey | FK | FOREIGN KEY (competitor_id) REFERENCES competitors(id) ON DELETE CASCADE |
+| swot_reports | swot_reports_pkey | PK | PRIMARY KEY (id) |
+| swot_reports | swot_reports_user_id_fkey | FK | FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE CASCADE |
+| user_llm_keys | user_llm_keys_pkey | PK | PRIMARY KEY (user_id, provider) |
+| user_llm_keys | user_llm_keys_provider_check | CHECK | CHECK ((provider = ANY (ARRAY['anthropic'::text, 'openai'::text, 'gemini'::text]))) |
+| user_llm_keys | user_llm_keys_user_id_fkey | FK | FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE CASCADE |
+| user_llm_settings | user_llm_settings_pkey | PK | PRIMARY KEY (user_id) |
+| user_llm_settings | user_llm_settings_provider_check | CHECK | CHECK ((provider = ANY (ARRAY['lovable'::text, 'anthropic'::text, 'openai'::text, 'gemini'::text]))) |
+| user_llm_settings | user_llm_settings_user_id_fkey | FK | FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE CASCADE |
+| user_scraper_keys | user_scraper_keys_pkey | PK | PRIMARY KEY (user_id, provider) |
+| user_scraper_keys | user_scraper_keys_provider_check | CHECK | CHECK ((provider = ANY (ARRAY['firecrawl'::text, 'scrapecreators'::text]))) |
+| user_scraper_keys | user_scraper_keys_source_check | CHECK | CHECK ((source = ANY (ARRAY['manual'::text, 'lovable_connector'::text]))) |
+| user_scraper_keys | user_scraper_keys_user_id_fkey | FK | FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE CASCADE |
+
+## 3. Indices
+
+| tabela | indice | definicao |
+|---|---|---|
+| ads_snapshots | ads_snapshots_competitor_idx | CREATE INDEX ads_snapshots_competitor_idx ON public.ads_snapshots USING btree (competitor_id, source, fetched_at DESC) |
+| ads_snapshots | ads_snapshots_dedupe_idx | CREATE UNIQUE INDEX ads_snapshots_dedupe_idx ON public.ads_snapshots USING btree (competitor_id, source, ad_archive_id, fetched_date) |
+| ads_snapshots | ads_snapshots_pkey | CREATE UNIQUE INDEX ads_snapshots_pkey ON public.ads_snapshots USING btree (id) |
+| ads_snapshots | ads_snapshots_user_idx | CREATE INDEX ads_snapshots_user_idx ON public.ads_snapshots USING btree (user_id, fetched_at DESC) |
+| alerts | alerts_pkey | CREATE UNIQUE INDEX alerts_pkey ON public.alerts USING btree (id) |
+| app_config | app_config_pkey | CREATE UNIQUE INDEX app_config_pkey ON public.app_config USING btree (key) |
+| changes | changes_pkey | CREATE UNIQUE INDEX changes_pkey ON public.changes USING btree (id) |
+| changes | changes_user_detected_at_idx | CREATE INDEX changes_user_detected_at_idx ON public.changes USING btree (user_id, detected_at DESC) |
+| competitors | competitors_crawl_status_idx | CREATE INDEX competitors_crawl_status_idx ON public.competitors USING btree (crawl_status) WHERE (crawl_status = ANY (ARRAY['queued'::text, 'running'::text])) |
+| competitors | competitors_pkey | CREATE UNIQUE INDEX competitors_pkey ON public.competitors USING btree (id) |
+| competitors | competitors_user_id_url_key | CREATE UNIQUE INDEX competitors_user_id_url_key ON public.competitors USING btree (user_id, url) |
+| invites | invites_email_key | CREATE UNIQUE INDEX invites_email_key ON public.invites USING btree (email) |
+| invites | invites_pkey | CREATE UNIQUE INDEX invites_pkey ON public.invites USING btree (id) |
+| profiles | profiles_pkey | CREATE UNIQUE INDEX profiles_pkey ON public.profiles USING btree (id) |
+| seo_analyses | seo_analyses_competitor_unique | CREATE UNIQUE INDEX seo_analyses_competitor_unique ON public.seo_analyses USING btree (competitor_id) |
+| seo_analyses | seo_analyses_pkey | CREATE UNIQUE INDEX seo_analyses_pkey ON public.seo_analyses USING btree (id) |
+| seo_analyses | seo_analyses_user_idx | CREATE INDEX seo_analyses_user_idx ON public.seo_analyses USING btree (user_id) |
+| snapshots | snapshots_competitor_crawled_at_idx | CREATE INDEX snapshots_competitor_crawled_at_idx ON public.snapshots USING btree (competitor_id, crawled_at DESC) |
+| snapshots | snapshots_pkey | CREATE UNIQUE INDEX snapshots_pkey ON public.snapshots USING btree (id) |
+| social_analyses | social_analyses_competitor_idx | CREATE INDEX social_analyses_competitor_idx ON public.social_analyses USING btree (competitor_id, platform, analyzed_at DESC) |
+| social_analyses | social_analyses_pkey | CREATE UNIQUE INDEX social_analyses_pkey ON public.social_analyses USING btree (id) |
+| social_snapshots | social_snapshots_competitor_idx | CREATE INDEX social_snapshots_competitor_idx ON public.social_snapshots USING btree (competitor_id, platform, fetched_at DESC) |
+| social_snapshots | social_snapshots_pkey | CREATE UNIQUE INDEX social_snapshots_pkey ON public.social_snapshots USING btree (id) |
+| social_snapshots | social_snapshots_unique_daily | CREATE UNIQUE INDEX social_snapshots_unique_daily ON public.social_snapshots USING btree (competitor_id, platform, fetched_date) |
+| swot_reports | swot_reports_pkey | CREATE UNIQUE INDEX swot_reports_pkey ON public.swot_reports USING btree (id) |
+| user_llm_keys | user_llm_keys_pkey | CREATE UNIQUE INDEX user_llm_keys_pkey ON public.user_llm_keys USING btree (user_id, provider) |
+| user_llm_settings | user_llm_settings_pkey | CREATE UNIQUE INDEX user_llm_settings_pkey ON public.user_llm_settings USING btree (user_id) |
+| user_scraper_keys | user_scraper_keys_pkey | CREATE UNIQUE INDEX user_scraper_keys_pkey ON public.user_scraper_keys USING btree (user_id, provider) |
+
+## 4. Triggers
+
+| tabela | gatilho | definicao |
+|---|---|---|
+| changes | on_change_inserted | CREATE TRIGGER on_change_inserted AFTER INSERT ON public.changes FOR EACH ROW EXECUTE FUNCTION invoke_generate_alerts() |
+| competitors | on_competitor_inserted | CREATE TRIGGER on_competitor_inserted AFTER INSERT ON public.competitors FOR EACH ROW EXECUTE FUNCTION invoke_crawl_competitor() |
+| seo_analyses | set_updated_at_seo_analyses | CREATE TRIGGER set_updated_at_seo_analyses BEFORE UPDATE ON public.seo_analyses FOR EACH ROW EXECUTE FUNCTION tg_seo_analyses_updated_at() |
+| snapshots | on_snapshot_inserted | CREATE TRIGGER on_snapshot_inserted AFTER INSERT ON public.snapshots FOR EACH ROW EXECUTE FUNCTION invoke_detect_changes() |
+| snapshots | on_snapshot_suggest_ads | CREATE TRIGGER on_snapshot_suggest_ads AFTER INSERT ON public.snapshots FOR EACH ROW EXECUTE FUNCTION invoke_suggest_ads_links() |
+| social_analyses | tg_social_analyses_updated_at | CREATE TRIGGER tg_social_analyses_updated_at BEFORE UPDATE ON public.social_analyses FOR EACH ROW EXECUTE FUNCTION tg_seo_analyses_updated_at() |
+
+## 5. RLS por tabela
+
+| tabela | rls_ligada |
+|---|---|
+| ads_snapshots | true |
+| alerts | true |
+| app_config | true |
+| changes | true |
+| competitors | true |
+| invites | true |
+| profiles | true |
+| seo_analyses | true |
+| snapshots | true |
+| social_analyses | true |
+| social_snapshots | true |
+| swot_reports | true |
+| user_llm_keys | true |
+| user_llm_settings | true |
+| user_scraper_keys | true |
+
+## 6. Policies
+
+| tabela | policy | operacao | papeis | USING | WITH CHECK |
+|---|---|---|---|---|---|
+| ads_snapshots | ads_snapshots_delete_own | DELETE | public | (auth.uid() = user_id) | - |
+| ads_snapshots | ads_snapshots_insert_own | INSERT | public | - | (auth.uid() = user_id) |
+| ads_snapshots | ads_snapshots_select_own | SELECT | public | (auth.uid() = user_id) | - |
+| ads_snapshots | ads_snapshots_update_own | UPDATE | public | (auth.uid() = user_id) | - |
+| alerts | alerts_delete_own | DELETE | public | (auth.uid() = user_id) | - |
+| alerts | alerts_insert_own | INSERT | public | - | (auth.uid() = user_id) |
+| alerts | alerts_select_own | SELECT | public | (auth.uid() = user_id) | - |
+| alerts | alerts_update_own | UPDATE | public | (auth.uid() = user_id) | - |
+| changes | changes_delete_own | DELETE | public | (auth.uid() = user_id) | - |
+| changes | changes_insert_own | INSERT | public | - | (auth.uid() = user_id) |
+| changes | changes_select_own | SELECT | public | (auth.uid() = user_id) | - |
+| changes | changes_update_own | UPDATE | public | (auth.uid() = user_id) | - |
+| competitors | competitors_delete_own | DELETE | public | (auth.uid() = user_id) | - |
+| competitors | competitors_insert_own | INSERT | public | - | (auth.uid() = user_id) |
+| competitors | competitors_select_own | SELECT | public | (auth.uid() = user_id) | - |
+| competitors | competitors_update_own | UPDATE | public | (auth.uid() = user_id) | - |
+| invites | invites_delete_admin | DELETE | authenticated | is_admin() | - |
+| invites | invites_select_admin | SELECT | authenticated | is_admin() | - |
+| profiles | profiles_delete_own | DELETE | public | (auth.uid() = id) | - |
+| profiles | profiles_insert_own | INSERT | public | - | (auth.uid() = id) |
+| profiles | profiles_select_admin | SELECT | authenticated | is_admin() | - |
+| profiles | profiles_select_own | SELECT | public | (auth.uid() = id) | - |
+| profiles | profiles_update_own | UPDATE | public | (auth.uid() = id) | - |
+| seo_analyses | Users delete own seo analyses | DELETE | public | (auth.uid() = user_id) | - |
+| seo_analyses | Users insert own seo analyses | INSERT | public | - | (auth.uid() = user_id) |
+| seo_analyses | Users update own seo analyses | UPDATE | public | (auth.uid() = user_id) | - |
+| seo_analyses | Users view own seo analyses | SELECT | public | (auth.uid() = user_id) | - |
+| snapshots | snapshots_delete_own | DELETE | public | (auth.uid() = user_id) | - |
+| snapshots | snapshots_insert_own | INSERT | public | - | (auth.uid() = user_id) |
+| snapshots | snapshots_select_own | SELECT | public | (auth.uid() = user_id) | - |
+| snapshots | snapshots_update_own | UPDATE | public | (auth.uid() = user_id) | - |
+| social_analyses | social_analyses_delete_own | DELETE | public | (auth.uid() = user_id) | - |
+| social_analyses | social_analyses_insert_own | INSERT | public | - | (auth.uid() = user_id) |
+| social_analyses | social_analyses_select_own | SELECT | public | (auth.uid() = user_id) | - |
+| social_analyses | social_analyses_update_own | UPDATE | public | (auth.uid() = user_id) | - |
+| social_snapshots | social_snapshots_delete_own | DELETE | public | (auth.uid() = user_id) | - |
+| social_snapshots | social_snapshots_insert_own | INSERT | public | - | (auth.uid() = user_id) |
+| social_snapshots | social_snapshots_select_own | SELECT | public | (auth.uid() = user_id) | - |
+| social_snapshots | social_snapshots_update_own | UPDATE | public | (auth.uid() = user_id) | - |
+| swot_reports | swot_delete_own | DELETE | public | (auth.uid() = user_id) | - |
+| swot_reports | swot_insert_own | INSERT | public | - | (auth.uid() = user_id) |
+| swot_reports | swot_select_own | SELECT | public | (auth.uid() = user_id) | - |
+| swot_reports | swot_update_own | UPDATE | public | (auth.uid() = user_id) | - |
+| user_llm_keys | llm_keys_delete_own | DELETE | public | (auth.uid() = user_id) | - |
+| user_llm_keys | llm_keys_insert_own | INSERT | authenticated | - | (auth.uid() = user_id) |
+| user_llm_keys | llm_keys_select_own | SELECT | public | (auth.uid() = user_id) | - |
+| user_llm_keys | llm_keys_update_own | UPDATE | authenticated | (auth.uid() = user_id) | (auth.uid() = user_id) |
+| user_llm_settings | llm_settings_delete_own | DELETE | public | (auth.uid() = user_id) | - |
+| user_llm_settings | llm_settings_insert_own | INSERT | public | - | (auth.uid() = user_id) |
+| user_llm_settings | llm_settings_select_own | SELECT | public | (auth.uid() = user_id) | - |
+| user_llm_settings | llm_settings_update_own | UPDATE | public | (auth.uid() = user_id) | - |
+| user_scraper_keys | scraper_keys_delete_own | DELETE | public | (auth.uid() = user_id) | - |
+| user_scraper_keys | scraper_keys_insert_own | INSERT | authenticated | - | (auth.uid() = user_id) |
+| user_scraper_keys | scraper_keys_select_own | SELECT | public | (auth.uid() = user_id) | - |
+| user_scraper_keys | scraper_keys_update_own | UPDATE | authenticated | (auth.uid() = user_id) | (auth.uid() = user_id) |
+
+## 7. GRANTs por papel
+
+| tabela | papel | permissoes |
+|---|---|---|
+| ads_snapshots | anon | DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE |
+| ads_snapshots | authenticated | DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE |
+| ads_snapshots | service_role | DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE |
+| alerts | anon | DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE |
+| alerts | authenticated | DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE |
+| alerts | service_role | DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE |
+| app_config | anon | DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE |
+| app_config | authenticated | DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE |
+| app_config | service_role | DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE |
+| changes | anon | DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE |
+| changes | authenticated | DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE |
+| changes | service_role | DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE |
+| competitors | anon | DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE |
+| competitors | authenticated | DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE |
+| competitors | service_role | DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE |
+| invites | anon | DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE |
+| invites | authenticated | DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE |
+| invites | service_role | DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE |
+| profiles | anon | DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE |
+| profiles | authenticated | DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE |
+| profiles | service_role | DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE |
+| seo_analyses | anon | DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE |
+| seo_analyses | authenticated | DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE |
+| seo_analyses | service_role | DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE |
+| snapshots | anon | DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE |
+| snapshots | authenticated | DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE |
+| snapshots | service_role | DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE |
+| social_analyses | anon | DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE |
+| social_analyses | authenticated | DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE |
+| social_analyses | service_role | DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE |
+| social_snapshots | anon | DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE |
+| social_snapshots | authenticated | DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE |
+| social_snapshots | service_role | DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE |
+| swot_reports | anon | DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE |
+| swot_reports | authenticated | DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE |
+| swot_reports | service_role | DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE |
+| user_llm_keys | anon | DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE |
+| user_llm_keys | authenticated | DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE |
+| user_llm_keys | service_role | DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE |
+| user_llm_settings | anon | DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE |
+| user_llm_settings | authenticated | DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE |
+| user_llm_settings | service_role | DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE |
+| user_scraper_keys | anon | DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE |
+| user_scraper_keys | authenticated | DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE |
+| user_scraper_keys | service_role | DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE |
+
+## 8. Funcoes -- assinatura e permissao
+
+| funcao | argumentos | retorno | seguranca | search_path | EXECUTE para |
+|---|---|---|---|---|---|
+| accept_invite |  | void | DEFINER | search_path=public | anon, authenticated, service_role |
+| decrypt_llm_key | enc bytea | text | DEFINER | search_path=public, extensions | anon, authenticated, service_role |
+| encrypt_llm_key | plain text | bytea | DEFINER | search_path=public, extensions | anon, authenticated, service_role |
+| enforce_invite_only |  | trigger | DEFINER | search_path=public | anon, authenticated, service_role |
+| get_llm_key | _user_id uuid, _provider text | text | DEFINER | search_path=public, extensions | anon, authenticated, service_role |
+| get_scraper_key | _user_id uuid, _provider text | text | DEFINER | search_path=public, extensions | anon, authenticated, service_role |
+| handle_new_user |  | trigger | DEFINER | search_path=public | anon, authenticated, service_role |
+| invoke_crawl_competitor |  | trigger | DEFINER | search_path=public, extensions | anon, authenticated, service_role |
+| invoke_daily_ads_scheduler |  | void | DEFINER | search_path=public, extensions | anon, authenticated, service_role |
+| invoke_daily_crawl_scheduler |  | void | DEFINER | search_path=public, extensions | anon, authenticated, service_role |
+| invoke_detect_changes |  | trigger | DEFINER | search_path=public, extensions | anon, authenticated, service_role |
+| invoke_generate_alerts |  | trigger | DEFINER | search_path=public | anon, authenticated, service_role |
+| invoke_suggest_ads_links |  | trigger | DEFINER | search_path=public, extensions | anon, authenticated, service_role |
+| is_admin |  | boolean | DEFINER | search_path=public | anon, authenticated, service_role |
+| set_llm_key | _provider text, _plain text | void | DEFINER | search_path=public, extensions | anon, authenticated, service_role |
+| set_scraper_key | _provider text, _plain text, _source text | void | DEFINER | search_path=public, extensions | anon, authenticated, service_role |
+| tg_seo_analyses_updated_at |  | trigger | INVOKER | search_path=public | anon, authenticated, service_role |
+
+## 9. Tipos e enums
+
+
+## 10. Extensoes
+
+	- pg_cron 1.6.4
+	- pg_net 0.20.4
+	- pg_stat_statements 1.11
+	- pgcrypto 1.3
+	- plpgsql 1.0
+	- supabase_vault 0.3.1
+	- uuid-ossp 1.1
+
+## 11. Agendamentos (pg_cron), se houver
+
+	- pg_cron INSTALADO -- rodar: SELECT * FROM cron.job
+
+## 12. Corpo das funcoes
+
+"### accept_invite
+
+```sql
+CREATE OR REPLACE FUNCTION public.accept_invite()
+ RETURNS void
+ LANGUAGE sql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+  update public.invites
+     set accepted_at = now()
+   where accepted_at is null
+     and lower(email) = lower((select email from auth.users where id = auth.uid()));
+$function$
+
+```
+"
+"### decrypt_llm_key
+
+```sql
+CREATE OR REPLACE FUNCTION public.decrypt_llm_key(enc bytea)
+ RETURNS text
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public', 'extensions'
+AS $function$
+declare
+  master_key text;
+begin
+  master_key := current_setting('app.llm_key_encryption_secret', true);
+  if master_key is null or master_key = '' then
+    select value into master_key from public.app_config where key = 'llm_key_encryption_secret';
+  end if;
+  if master_key is null or master_key = '' then
+    raise exception 'LLM_KEY_ENCRYPTION_SECRET not configured';
+  end if;
+  return pgp_sym_decrypt(enc, master_key);
+end;
+$function$
+
+```
+"
+"### encrypt_llm_key
+
+```sql
+CREATE OR REPLACE FUNCTION public.encrypt_llm_key(plain text)
+ RETURNS bytea
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public', 'extensions'
+AS $function$
+declare
+  master_key text;
+begin
+  master_key := current_setting('app.llm_key_encryption_secret', true);
+  if master_key is null or master_key = '' then
+    -- Fall back to app_config table
+    select value into master_key from public.app_config where key = 'llm_key_encryption_secret';
+  end if;
+  if master_key is null or master_key = '' then
+    raise exception 'LLM_KEY_ENCRYPTION_SECRET not configured';
+  end if;
+  return pgp_sym_encrypt(plain, master_key, 'cipher-algo=aes256')::bytea;
+end;
+$function$
+
+```
+"
+"### enforce_invite_only
+
+```sql
+CREATE OR REPLACE FUNCTION public.enforce_invite_only()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+begin
+  if (select count(*) from auth.users) > 0
+     and not exists (
+       select 1 from public.invites
+        where lower(email) = lower(new.email) and accepted_at is null
+     )
+  then
+    raise exception 'signup_by_invite_only';
+  end if;
+  return new;
+end;
+$function$
+
+```
+"
+"### get_llm_key
+
+```sql
+CREATE OR REPLACE FUNCTION public.get_llm_key(_user_id uuid, _provider text)
+ RETURNS text
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public', 'extensions'
+AS $function$
+declare
+  master_key text;
+  enc bytea;
+begin
+  master_key := current_setting('app.llm_key_encryption_secret', true);
+  if master_key is null or master_key = '' then
+    select value into master_key from public.app_config where key = 'llm_key_encryption_secret';
+  end if;
+  if master_key is null or master_key = '' then
+    raise exception 'encryption master key not configured';
+  end if;
+
+  select encrypted_key into enc
+    from public.user_llm_keys
+   where user_id = _user_id and provider = _provider;
+
+  if enc is null then
+    return null;
+  end if;
+
+  return pgp_sym_decrypt(enc, master_key);
+end;
+$function$
+
+```
+"
+"### get_scraper_key
+
+```sql
+CREATE OR REPLACE FUNCTION public.get_scraper_key(_user_id uuid, _provider text)
+ RETURNS text
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public', 'extensions'
+AS $function$
+declare
+  master_key text;
+  enc bytea;
+begin
+  master_key := current_setting('app.llm_key_encryption_secret', true);
+  if master_key is null or master_key = '' then
+    select value into master_key from public.app_config where key = 'llm_key_encryption_secret';
+  end if;
+  if master_key is null or master_key = '' then
+    raise exception 'encryption master key not configured';
+  end if;
+
+  select encrypted_key into enc
+    from public.user_scraper_keys
+   where user_id = _user_id and provider = _provider;
+
+  if enc is null then
+    return null;
+  end if;
+
+  return pgp_sym_decrypt(enc, master_key);
+end;
+$function$
+
+```
+"
+"### handle_new_user
+
+```sql
+CREATE OR REPLACE FUNCTION public.handle_new_user()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+declare
+  is_first boolean;
+begin
+  select count(*) = 1 into is_first from auth.users;
+
+  insert into public.profiles (id, full_name, email, role)
+  values (
+    new.id,
+    coalesce(new.raw_user_meta_data->>'full_name', new.email),
+    new.email,
+    case when is_first then 'admin' else 'member' end
+  )
+  on conflict (id) do nothing;
+  return new;
+end;
+$function$
+
+```
+"
+"### invoke_crawl_competitor
+
+```sql
+CREATE OR REPLACE FUNCTION public.invoke_crawl_competitor()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public', 'extensions'
+AS $function$
+declare
+  fn_url text;
+  service_key text;
+begin
+  select value into fn_url from public.app_config where key = 'functions_base_url';
+  select value into service_key from public.app_config where key = 'service_role_key';
+
+  if fn_url is null or fn_url = '' or service_key is null or service_key = '' then
+    update public.competitors
+       set crawl_status = 'failed',
+           crawl_error  = 'Configuração inicial pendente: o dono da plataforma precisa chamar a function bootstrap-app-config (README, passo 1). Depois use ""Crawlear agora"".'
+     where id = new.id;
+    return new;
+  end if;
+
+  update public.competitors set crawl_status = 'queued' where id = new.id;
+
+  perform net.http_post(
+    url := fn_url || '/crawl-competitor',
+    headers := jsonb_build_object(
+      'Content-Type','application/json',
+      'Authorization','Bearer ' || service_key
+    ),
+    body := jsonb_build_object('competitor_id', new.id, 'user_id', new.user_id)
+  );
+  return new;
+end;
+$function$
+
+```
+"
+"### invoke_daily_ads_scheduler
+
+```sql
+CREATE OR REPLACE FUNCTION public.invoke_daily_ads_scheduler()
+ RETURNS void
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public', 'extensions'
+AS $function$
+declare
+  fn_url text;
+  service_key text;
+begin
+  select value into fn_url from public.app_config where key = 'functions_base_url';
+  select value into service_key from public.app_config where key = 'service_role_key';
+  if fn_url is null or fn_url = '' or service_key is null or service_key = '' then
+    raise warning 'invoke_daily_ads_scheduler: app_config incompleto (rode bootstrap-app-config)';
+    return;
+  end if;
+
+  perform net.http_post(
+    url := fn_url || '/daily-ads-scheduler',
+    headers := jsonb_build_object(
+      'Content-Type', 'application/json',
+      'Authorization', 'Bearer ' || service_key
+    ),
+    body := '{}'::jsonb
+  );
+end;
+$function$
+
+```
+"
+"### invoke_daily_crawl_scheduler
+
+```sql
+CREATE OR REPLACE FUNCTION public.invoke_daily_crawl_scheduler()
+ RETURNS void
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public', 'extensions'
+AS $function$
+declare
+  fn_url text;
+  service_key text;
+  rec record;
+begin
+  select value into fn_url from public.app_config where key = 'functions_base_url';
+  select value into service_key from public.app_config where key = 'service_role_key';
+  if fn_url is null or fn_url = '' or service_key is null or service_key = '' then
+    raise warning 'invoke_daily_crawl_scheduler: app_config incompleto (rode bootstrap-app-config)';
+    return;
+  end if;
+
+  for rec in
+    select id, user_id from public.competitors where status = 'active'
+  loop
+    perform net.http_post(
+      url := fn_url || '/crawl-competitor',
+      headers := jsonb_build_object(
+        'Content-Type', 'application/json',
+        'Authorization', 'Bearer ' || service_key
+      ),
+      body := jsonb_build_object('competitor_id', rec.id, 'user_id', rec.user_id)
+    );
+  end loop;
+end;
+$function$
+
+```
+"
+"### invoke_detect_changes
+
+```sql
+CREATE OR REPLACE FUNCTION public.invoke_detect_changes()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public', 'extensions'
+AS $function$
+declare
+  fn_url text;
+  service_key text;
+begin
+  select value into fn_url from public.app_config where key = 'functions_base_url';
+  select value into service_key from public.app_config where key = 'service_role_key';
+
+  if fn_url is null or fn_url = '' or service_key is null or service_key = '' then
+    raise warning 'invoke_detect_changes: app_config incompleto (functions_base_url/service_role_key)';
+    return new;
+  end if;
+
+  perform net.http_post(
+    url := fn_url || '/detect-changes',
+    headers := jsonb_build_object(
+      'Content-Type', 'application/json',
+      'Authorization', 'Bearer ' || service_key
+    ),
+    body := jsonb_build_object('snapshot_id', new.id)
+  );
+  return new;
+end;
+$function$
+
+```
+"
+"### invoke_generate_alerts
+
+```sql
+CREATE OR REPLACE FUNCTION public.invoke_generate_alerts()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+begin
+  if new.severity = 'info' then
+    return new;
+  end if;
+
+  insert into public.alerts (user_id, change_id, channel)
+  values (new.user_id, new.id, 'in_app');
+
+  update public.changes set alerted = true where id = new.id;
+
+  return new;
+end;
+$function$
+
+```
+"
+"### invoke_suggest_ads_links
+
+```sql
+CREATE OR REPLACE FUNCTION public.invoke_suggest_ads_links()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public', 'extensions'
+AS $function$
+declare
+  fn_url text;
+  service_key text;
+  user_id_val uuid;
+  suggested timestamptz;
+begin
+  select user_id, ads_link_suggested_at into user_id_val, suggested
+    from public.competitors where id = new.competitor_id;
+
+  if suggested is not null and suggested > now() - interval '24 hours' then
+    return new;
+  end if;
+
+  select value into fn_url from public.app_config where key = 'functions_base_url';
+  select value into service_key from public.app_config where key = 'service_role_key';
+  if fn_url is null or fn_url = '' or service_key is null or service_key = '' then
+    return new;
+  end if;
+
+  perform net.http_post(
+    url := fn_url || '/suggest-ads-links',
+    headers := jsonb_build_object(
+      'Content-Type','application/json',
+      'Authorization','Bearer ' || service_key
+    ),
+    body := jsonb_build_object('competitor_id', new.competitor_id, 'user_id', user_id_val)
+  );
+  return new;
+end; $function$
+
+```
+"
+"### is_admin
+
+```sql
+CREATE OR REPLACE FUNCTION public.is_admin()
+ RETURNS boolean
+ LANGUAGE sql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+  select exists (
+    select 1 from public.profiles where id = auth.uid() and role = 'admin'
+  );
+$function$
+
+```
+"
+"### set_llm_key
+
+```sql
+CREATE OR REPLACE FUNCTION public.set_llm_key(_provider text, _plain text)
+ RETURNS void
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public', 'extensions'
+AS $function$
+declare
+  master_key text;
+  uid uuid := auth.uid();
+  hint text;
+begin
+  if uid is null then
+    raise exception 'not authenticated';
+  end if;
+  if _provider not in ('anthropic','openai','gemini') then
+    raise exception 'invalid provider: %', _provider;
+  end if;
+  if _plain is null or length(_plain) < 20 then
+    raise exception 'key too short';
+  end if;
+
+  master_key := current_setting('app.llm_key_encryption_secret', true);
+  if master_key is null or master_key = '' then
+    select value into master_key from public.app_config where key = 'llm_key_encryption_secret';
+  end if;
+  if master_key is null or master_key = '' then
+    raise exception 'encryption master key not configured';
+  end if;
+
+  hint := right(_plain, 4);
+
+  insert into public.user_llm_keys (user_id, provider, encrypted_key, key_hint, created_at)
+  values (
+    uid,
+    _provider,
+    pgp_sym_encrypt(_plain, master_key, 'cipher-algo=aes256')::bytea,
+    hint,
+    now()
+  )
+  on conflict (user_id, provider) do update
+    set encrypted_key = excluded.encrypted_key,
+        key_hint = excluded.key_hint,
+        created_at = now();
+end;
+$function$
+
+```
+"
+"### set_scraper_key
+
+```sql
+CREATE OR REPLACE FUNCTION public.set_scraper_key(_provider text, _plain text, _source text DEFAULT 'manual'::text)
+ RETURNS void
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public', 'extensions'
+AS $function$
+declare
+  master_key text;
+  uid uuid := auth.uid();
+  hint text;
+  key_clean text;
+begin
+  if uid is null then
+    raise exception 'not authenticated';
+  end if;
+  if _provider not in ('firecrawl', 'scrapecreators') then
+    raise exception 'invalid provider: %', _provider;
+  end if;
+  if _source not in ('manual', 'lovable_connector') then
+    raise exception 'invalid source: %', _source;
+  end if;
+
+  key_clean := btrim(coalesce(_plain, ''));
+
+  if key_clean ~ '\s' then
+    raise exception 'key must not contain whitespace';
+  end if;
+  if length(key_clean) > 200 then
+    raise exception 'key too long';
+  end if;
+  if _provider = 'firecrawl' then
+    if key_clean not like 'fc-%' then
+      raise exception 'firecrawl key must start with fc-';
+    end if;
+    if length(key_clean) < 20 then
+      raise exception 'key too short';
+    end if;
+  else
+    if length(key_clean) < 12 then
+      raise exception 'key too short';
+    end if;
+  end if;
+
+  master_key := current_setting('app.llm_key_encryption_secret', true);
+  if master_key is null or master_key = '' then
+    select value into master_key from public.app_config where key = 'llm_key_encryption_secret';
+  end if;
+  if master_key is null or master_key = '' then
+    raise exception 'encryption master key not configured';
+  end if;
+
+  hint := right(key_clean, 4);
+
+  insert into public.user_scraper_keys (user_id, provider, encrypted_key, key_hint, source, updated_at)
+  values (
+    uid,
+    _provider,
+    pgp_sym_encrypt(key_clean, master_key, 'cipher-algo=aes256')::bytea,
+    hint,
+    _source,
+    now()
+  )
+  on conflict (user_id, provider) do update
+    set encrypted_key = excluded.encrypted_key,
+        key_hint = excluded.key_hint,
+        source = excluded.source,
+        updated_at = now();
+end;
+$function$
+
+```
+"
+"### tg_seo_analyses_updated_at
+
+```sql
+CREATE OR REPLACE FUNCTION public.tg_seo_analyses_updated_at()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SET search_path TO 'public'
+AS $function$
+BEGIN
+  NEW.updated_at = now();
+  RETURN NEW;
+END;
+$function$
+
+```
+"
+
+## 13. Linhas por tabela
+
+| tabela | linhas |
+|---|---|
+| ads_snapshots | 0 |
+| alerts | 0 |
+| app_config | 0 |
+| changes | 0 |
+| competitors | 0 |
+| invites | 0 |
+| profiles | 0 |
+| seo_analyses | 0 |
+| snapshots | 0 |
+| social_analyses | 0 |
+| social_snapshots | 0 |
+| swot_reports | 0 |
+| user_llm_keys | 0 |
+| user_llm_settings | 0 |
+| user_scraper_keys | 0 |
