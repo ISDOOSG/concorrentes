@@ -1,66 +1,70 @@
 import { useEffect, useState } from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import type { Session } from "@supabase/supabase-js";
+import { z } from "zod";
 
-import { supabase } from "@/integrations/supabase/client";
+import { acceptInvite, apiFetch, ApiError } from "@/lib/api-client";
+
+const conviteSearchSchema = z.object({
+  id: z.string().optional(),
+});
 
 export const Route = createFileRoute("/convite")({
+  validateSearch: conviteSearchSchema,
   component: AcceptInvite,
 });
 
-// O link do e-mail de convite chega com os tokens no hash da URL; o
-// supabase-js (detectSessionInUrl) cria a sessão sozinho. Aqui a pessoa só
-// completa o cadastro: nome + senha.
+type ConviteState =
+  | { status: "loading" }
+  | { status: "invalido" }
+  | { status: "valido"; email: string };
+
+// O link do convite chega como /convite?id=<uuid> -- o id da linha de
+// convites e o proprio token de acesso (nao existe magic link por e-mail
+// ainda, sem infra de envio; o admin compartilha o link manualmente,
+// ver settings.equipe.tsx).
 function AcceptInvite() {
   const navigate = useNavigate();
-  const [session, setSession] = useState<Session | null | "loading">("loading");
+  const { id } = Route.useSearch();
+  const [state, setState] = useState<ConviteState>({ status: "loading" });
   const [fullName, setFullName] = useState("");
   const [password, setPassword] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    if (!id) {
+      setState({ status: "invalido" });
+      return;
+    }
     let mounted = true;
-    supabase.auth.getSession().then(({ data }) => {
-      if (mounted) setSession(data.session);
-    });
-    const { data: sub } = supabase.auth.onAuthStateChange((_event, s) => {
-      if (mounted) setSession(s);
-    });
+    apiFetch<{ email: string }>(`/convite/${id}`)
+      .then((r) => {
+        if (mounted) setState({ status: "valido", email: r.email });
+      })
+      .catch(() => {
+        if (mounted) setState({ status: "invalido" });
+      });
     return () => {
       mounted = false;
-      sub.subscription.unsubscribe();
     };
-  }, []);
+  }, [id]);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (session === "loading" || !session) return;
+    if (state.status !== "valido" || !id) return;
     if (password.length < 8) {
       setError("A senha precisa de pelo menos 8 caracteres.");
       return;
     }
     setSaving(true);
     setError(null);
-
-    const { error: updErr } = await supabase.auth.updateUser({
-      password,
-      data: { full_name: fullName.trim() || null },
-    });
-    if (updErr) {
+    try {
+      await acceptInvite(id, password, fullName.trim() || undefined);
+    } catch (e2) {
       setSaving(false);
-      setError(updErr.message);
+      setError(e2 instanceof ApiError ? e2.message : "Falha ao aceitar o convite.");
       return;
     }
-
-    if (fullName.trim()) {
-      await supabase
-        .from("profiles")
-        .update({ full_name: fullName.trim() })
-        .eq("id", session.user.id);
-    }
-    await supabase.rpc("accept_invite");
-
     navigate({ to: "/dashboard", replace: true });
   };
 
@@ -108,9 +112,9 @@ function AcceptInvite() {
           </span>
         </div>
 
-        {session === "loading" ? (
+        {state.status === "loading" ? (
           <p className="via-body">Validando seu convite…</p>
-        ) : !session ? (
+        ) : state.status === "invalido" ? (
           <>
             <h1 className="via-h1" style={{ fontSize: 22, marginBottom: 8 }}>
               Convite inválido ou expirado
@@ -129,7 +133,7 @@ function AcceptInvite() {
               className="via-body"
               style={{ color: "var(--via-color-text-muted)", marginBottom: 20 }}
             >
-              Você foi convidado como <strong>{session.user.email}</strong>.
+              Você foi convidado como <strong>{state.email}</strong>.
               Defina seu nome e uma senha para entrar.
             </p>
             <form onSubmit={submit} style={{ display: "flex", flexDirection: "column", gap: 12 }}>

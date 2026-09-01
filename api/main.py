@@ -61,7 +61,9 @@ class Credenciais(BaseModel):
 
 
 class NovoConcorrente(BaseModel):
-    name: str = Field(min_length=1)
+    # name pode vir vazio -- criar_concorrente cai pro dominio da url nesse
+    # caso (mesma regra que o front tinha antes de virar validacao server-side)
+    name: str = ""
     url: str = Field(min_length=1)
 
 
@@ -100,6 +102,18 @@ def saude():
 # --------------------------------------------------------------- identidade
 @app.post("/auth/signup", status_code=201)
 def signup(c: Credenciais):
+    # Cadastro direto SO para o primeiro usuario (bootstrap do admin).
+    # Depois disso, o unico jeito de entrar e por convite -- mesma politica
+    # que ja estava configurada na Supabase (o front trata o erro
+    # 'signup_by_invite_only' desde antes desta API existir; replicado
+    # aqui, nao inventado).
+    total = db.um("select count(*) as n from public.profiles")["n"]
+    if total > 0:
+        raise HTTPException(
+            403,
+            "O cadastro direto esta desativado: o acesso e por convite. "
+            "Peca um convite ao administrador da plataforma.",
+        )
     ja = db.um("select id from public.usuario where lower(email) = lower(%s)", (c.email,))
     if ja:
         raise HTTPException(409, "Ja existe uma conta com esse e-mail.")
@@ -108,12 +122,10 @@ def signup(c: Credenciais):
         "values (%s, %s, %s) returning id, email, nome",
         (c.email, c.nome or c.email.split("@")[0], auth.hash_senha(c.senha)),
     )
-    total = db.um("select count(*) as n from public.profiles")["n"]
-    papel = "admin" if total == 0 else "member"
     db.executar(
         "insert into public.profiles (id, full_name, email, role) "
-        "values (%s, %s, %s, %s)",
-        (novo["id"], novo["nome"], novo["email"], papel),
+        "values (%s, %s, %s, 'admin')",
+        (novo["id"], novo["nome"], novo["email"]),
     )
     token, expira = auth.gerar_token(novo["id"], novo["email"])
     return {"token": token, "expiraEm": expira, "usuario": novo}
@@ -178,10 +190,18 @@ def criar_concorrente(c: NovoConcorrente, u=Depends(auth.usuario_atual)):
         raise HTTPException(
             403, "Voce atingiu o limite de " + str(limite) + " concorrentes do seu plano."
         )
+    # normalizacao que antes vivia no client (providers/supabase.ts,
+    # createCompetitor) -- movida pro servidor pra nao depender de cada
+    # consumidor da API repetir a mesma regra.
+    url = c.url.strip()
+    if not url.startswith(("http://", "https://")):
+        url = "https://" + url
+    dominio = url.split("://", 1)[-1].split("/", 1)[0]
+    nome = c.name.strip() or dominio
     return db.um(
         "insert into public.competitors (user_id, name, url) "
         "values (%s, %s, %s) returning *",
-        (u["id"], c.name, c.url),
+        (u["id"], nome, url),
     )
 
 
@@ -227,15 +247,35 @@ def disparar_crawl(cid: uuid.UUID, u=Depends(auth.usuario_atual)):
 # -------------------------------------------------------------------- alertas
 @app.get("/alerts")
 def listar_alertas(u=Depends(auth.usuario_atual)):
-    return db.varios(
-        "select a.*, c.change_type, c.severity, c.summary, c.detected_at, "
-        "c.competitor_id, comp.name as competitor_name "
+    # 'change' vem ANINHADO de proposito -- e o formato que o join do
+    # supabase-js produzia (select "...,change:changes(...)"), e os
+    # adaptadores do front (adaptAlert, importados de providers/supabase.ts)
+    # esperam exatamente essa forma. Achatar aqui quebraria o mapeamento de
+    # severity/change_type que o front ja faz.
+    linhas = db.varios(
+        "select a.id, a.channel, a.read_at, a.created_at, "
+        "c.competitor_id, c.severity, c.summary, c.change_type "
         "from public.alerts a "
         "left join public.changes c on c.id = a.change_id "
-        "left join public.competitors comp on comp.id = c.competitor_id "
         "where a.user_id = %s order by a.created_at desc limit 200",
         (u["id"],),
     )
+    saida = []
+    for l in linhas:
+        tem_change = l["competitor_id"] is not None
+        saida.append({
+            "id": l["id"],
+            "channel": l["channel"],
+            "read_at": l["read_at"],
+            "created_at": l["created_at"],
+            "change": {
+                "competitor_id": l["competitor_id"],
+                "severity": l["severity"],
+                "summary": l["summary"],
+                "change_type": l["change_type"],
+            } if tem_change else None,
+        })
+    return saida
 
 
 @app.post("/alerts/{aid}/read", status_code=204)
@@ -434,3 +474,117 @@ def testar_chave_scraper(provider: str, u=Depends(auth.usuario_atual)):
     raise HTTPException(
         501, FALTA_TERCEIRO.format(servico="Firecrawl / ScrapeCreators")
     )
+
+
+# --------------------------------------------------------------- equipe/convite
+class NovoConvite(BaseModel):
+    email: EmailStr
+
+
+class AceitarConvite(BaseModel):
+    senha: str = Field(min_length=8)
+    nome: str | None = None
+
+
+def admin_atual(u=Depends(auth.usuario_atual)):
+    """Dependencia de rota: 403 se o usuario nao for admin."""
+    p = db.um("select role from public.profiles where id = %s", (u["id"],))
+    if not p or p["role"] != "admin":
+        raise HTTPException(403, "Apenas o administrador da plataforma gerencia a equipe.")
+    return u
+
+
+@app.get("/team/members")
+def listar_equipe(_admin=Depends(admin_atual)):
+    return db.varios(
+        "select id, full_name, email, role, created_at "
+        "from public.profiles order by created_at asc"
+    )
+
+
+@app.get("/team/invites")
+def listar_convites(_admin=Depends(admin_atual)):
+    return db.varios(
+        "select id, email, created_at, accepted_at from public.invites "
+        "where accepted_at is null order by created_at desc"
+    )
+
+
+@app.post("/team/invites", status_code=201)
+def criar_convite(c: NovoConvite, admin=Depends(admin_atual)):
+    ja_usuario = db.um("select id from public.usuario where lower(email) = lower(%s)", (c.email,))
+    if ja_usuario:
+        raise HTTPException(409, "Esse e-mail ja tem conta na plataforma.")
+    ja_convite = db.um(
+        "select id from public.invites where lower(email) = lower(%s) and accepted_at is null",
+        (c.email,),
+    )
+    if ja_convite:
+        raise HTTPException(409, "Ja existe um convite pendente para esse e-mail.")
+    convite = db.um(
+        "insert into public.invites (email, invited_by) values (%s, %s) "
+        "returning id, email, created_at",
+        (c.email, admin["id"]),
+    )
+    return {**convite, "ok": True}
+
+
+@app.delete("/team/invites/{invite_id}", status_code=204)
+def apagar_convite(invite_id: uuid.UUID, _admin=Depends(admin_atual)):
+    n = db.executar(
+        "delete from public.invites where id = %s and accepted_at is null",
+        (str(invite_id),),
+    )
+    if not n:
+        raise HTTPException(404, "Convite nao encontrado.")
+
+
+@app.get("/convite/{invite_id}")
+def ver_convite(invite_id: uuid.UUID):
+    """Publica, sem autenticacao -- e a tela que a pessoa convidada abre
+    antes de ter conta. So confirma se o convite existe e esta pendente."""
+    c = db.um(
+        "select email, accepted_at from public.invites where id = %s",
+        (str(invite_id),),
+    )
+    if not c:
+        raise HTTPException(404, "Convite nao encontrado ou expirado.")
+    if c["accepted_at"] is not None:
+        raise HTTPException(410, "Este convite ja foi usado.")
+    return {"email": c["email"]}
+
+
+@app.post("/convite/{invite_id}/accept", status_code=201)
+def aceitar_convite(invite_id: uuid.UUID, a: AceitarConvite):
+    """Publica -- cria a conta do convidado e ja devolve o token (login
+    automatico). O e-mail vem do convite, nunca do corpo da requisicao."""
+    c = db.um(
+        "select email, accepted_at from public.invites where id = %s",
+        (str(invite_id),),
+    )
+    if not c:
+        raise HTTPException(404, "Convite nao encontrado ou expirado.")
+    if c["accepted_at"] is not None:
+        raise HTTPException(410, "Este convite ja foi usado.")
+
+    email = c["email"]
+    ja = db.um("select id from public.usuario where lower(email) = lower(%s)", (email,))
+    if ja:
+        raise HTTPException(409, "Ja existe uma conta com esse e-mail.")
+
+    novo = db.um(
+        "insert into public.usuario (email, nome, senha_hash) "
+        "values (%s, %s, %s) returning id, email, nome",
+        (email, a.nome or email.split("@")[0], auth.hash_senha(a.senha)),
+    )
+    db.executar(
+        "insert into public.profiles (id, full_name, email, role) "
+        "values (%s, %s, %s, 'member')",
+        (novo["id"], novo["nome"], novo["email"]),
+    )
+    db.executar(
+        "update public.invites set accepted_at = now() where id = %s",
+        (str(invite_id),),
+    )
+    token, expira = auth.gerar_token(novo["id"], novo["email"])
+    return {"token": token, "expiraEm": expira, "usuario": novo}

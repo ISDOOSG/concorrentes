@@ -1,6 +1,6 @@
 import type { DataProvider } from "./types";
 import { mockProvider } from "./providers/mock";
-import { supabaseProvider } from "./providers/supabase";
+import { apiProvider } from "./providers/api";
 
 const DEMO_KEY = "ac-demo-mode";
 const DEMO_EVENT = "ac:demo-mode-changed";
@@ -11,13 +11,13 @@ const buildTimeForceMock =
   (import.meta.env?.VITE_DATA_PROVIDER as string | undefined)?.toLowerCase() ===
   "mock";
 
-const buildTimeForceSupabase =
+const buildTimeForceApi =
   (import.meta.env?.VITE_DATA_PROVIDER as string | undefined)?.toLowerCase() ===
-  "supabase";
+  "api";
 
 export function isDemoMode(): boolean {
   if (buildTimeForceMock) return true;
-  if (buildTimeForceSupabase) return false;
+  if (buildTimeForceApi) return false;
   if (typeof window === "undefined") return false;
   return window.localStorage.getItem(DEMO_KEY) === "true";
 }
@@ -38,7 +38,7 @@ export const DEMO_MODE_EVENT = DEMO_EVENT;
 // Components import { data } once and always get the right backend.
 export const data: DataProvider = new Proxy({} as DataProvider, {
   get(_, prop, receiver) {
-    const provider = isDemoMode() ? mockProvider : supabaseProvider;
+    const provider = isDemoMode() ? mockProvider : apiProvider;
     return Reflect.get(provider, prop, receiver);
   },
 });

@@ -62,13 +62,13 @@ const PALETTE = [
   "var(--via-util-6)",
 ];
 
-function hashColor(id: string): string {
+export function hashColor(id: string): string {
   let h = 0;
   for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) | 0;
   return PALETTE[Math.abs(h) % PALETTE.length];
 }
 
-function domainOf(url: string): string {
+export function domainOf(url: string): string {
   return url.replace(/^https?:\/\//, "").replace(/\/.*$/, "");
 }
 
@@ -85,12 +85,12 @@ type CompetitorRow = {
   crawl_started_at?: string | null;
 };
 
-function normalizeCrawlStatus(s: string | null | undefined): Competitor["crawlStatus"] {
+export function normalizeCrawlStatus(s: string | null | undefined): Competitor["crawlStatus"] {
   if (s === "queued" || s === "running" || s === "success" || s === "failed") return s;
   return "never";
 }
 
-function adaptCompetitor(row: CompetitorRow): Competitor {
+export function adaptCompetitor(row: CompetitorRow): Competitor {
   const crawlStatus = normalizeCrawlStatus(row.crawl_status);
   const lastChange = row.last_crawled_at
     ? new Date(row.last_crawled_at).toLocaleDateString("pt-BR")
@@ -163,7 +163,7 @@ const CHANGE_TYPE_FROM_DB: Record<string, Alert["type"]> = {
   traffic: "content",
 };
 
-function adaptAlert(row: AlertWithChangeRow): Alert {
+export function adaptAlert(row: AlertWithChangeRow): Alert {
   const c = row.change;
   return {
     id: row.id,
@@ -190,7 +190,7 @@ type SnapshotRow = {
   cost_cents: number | null;
 };
 
-function adaptSnapshot(row: SnapshotRow): Snapshot {
+export function adaptSnapshot(row: SnapshotRow): Snapshot {
   return {
     id: row.id,
     competitor_id: row.competitor_id,
@@ -224,7 +224,7 @@ type AdRow = {
   fetched_at: string;
 };
 
-function adaptAd(row: AdRow): Ad {
+export function adaptAd(row: AdRow): Ad {
   return {
     id: row.id,
     competitor: row.competitor_id,
@@ -245,7 +245,7 @@ function adaptAd(row: AdRow): Ad {
   };
 }
 
-function timeAgo(iso: string): string {
+export function timeAgo(iso: string): string {
   const ms = Date.now() - new Date(iso).getTime();
   const m = Math.floor(ms / 60_000);
   if (m < 60) return `Há ${m || 1} min`;

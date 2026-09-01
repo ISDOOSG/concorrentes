@@ -1,49 +1,46 @@
 import { useEffect, useState } from "react";
-import type { Session, User } from "@supabase/supabase-js";
 
-import { supabase } from "@/integrations/supabase/client";
+import { getSession, onAuthChange, signOut, type ApiSession } from "@/lib/api-client";
 
 export type AuthedUser = {
-  user: User;
-  session: Session;
   email: string;
   fullName: string | null;
   initials: string;
+  role: "admin" | "member";
   logout: () => Promise<void>;
 };
 
 export function useAuthedUser(): AuthedUser | null {
-  const [session, setSession] = useState<Session | null>(null);
+  const [session, setSession] = useState<ApiSession | null>(null);
 
   useEffect(() => {
     let mounted = true;
-    supabase.auth.getSession().then(({ data }) => {
-      if (mounted) setSession(data.session);
-    });
-    const { data: sub } = supabase.auth.onAuthStateChange((_event, s) => {
-      if (mounted) setSession(s);
-    });
+    const load = () => {
+      getSession().then((s) => {
+        if (mounted) setSession(s);
+      });
+    };
+    load();
+    const unsub = onAuthChange(load);
     return () => {
       mounted = false;
-      sub.subscription.unsubscribe();
+      unsub();
     };
   }, []);
 
   if (!session) return null;
 
   const email = session.user.email ?? "";
-  const fullName =
-    (session.user.user_metadata?.full_name as string | undefined) ?? null;
+  const fullName = session.user.nome ?? null;
   const initials = (fullName || email || "A").slice(0, 1).toUpperCase();
 
   return {
-    user: session.user,
-    session,
     email,
     fullName,
     initials,
+    role: session.role,
     logout: async () => {
-      await supabase.auth.signOut();
+      signOut();
     },
   };
 }

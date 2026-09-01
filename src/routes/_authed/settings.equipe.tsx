@@ -1,7 +1,7 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { Mail, ShieldCheck, Trash2, UserPlus } from "lucide-react";
+import { Copy, Mail, ShieldCheck, Trash2, UserPlus } from "lucide-react";
 import { toast } from "sonner";
 
 import { AppTopbar } from "@/components/ic/app-topbar";
@@ -10,8 +10,7 @@ import { SettingsSubnav } from "@/components/ic/settings-subnav";
 import { useAuthedUser } from "@/lib/use-authed-user";
 import { useMyProfile } from "@/lib/use-my-profile";
 import { useAlerts } from "@/lib/data/hooks/use-alerts";
-import { supabase } from "@/integrations/supabase/client";
-import { edgeErrorMessage } from "@/lib/data/providers/supabase";
+import { apiFetch, ApiError } from "@/lib/api-client";
 
 export const Route = createFileRoute("/_authed/settings/equipe")({
   component: TeamPage,
@@ -32,6 +31,11 @@ type Invite = {
   accepted_at: string | null;
 };
 
+function inviteLink(id: string): string {
+  if (typeof window === "undefined") return "";
+  return `${window.location.origin}/convite?id=${id}`;
+}
+
 function TeamPage() {
   const navigate = useNavigate();
   const qc = useQueryClient();
@@ -40,69 +44,56 @@ function TeamPage() {
   const profileQ = useMyProfile();
   const [email, setEmail] = useState("");
 
+  const isAdmin = profileQ.data?.role === "admin";
+
   const membersQ = useQuery({
     queryKey: ["team-members"],
-    queryFn: async (): Promise<Member[]> => {
-      const { data, error } = await supabase
-        .from("profiles")
-        .select("id, full_name, email, role, created_at")
-        .order("created_at", { ascending: true });
-      if (error) throw error;
-      return (data ?? []) as Member[];
-    },
-    enabled: profileQ.data?.role === "admin",
+    queryFn: () => apiFetch<Member[]>("/team/members"),
+    enabled: isAdmin,
   });
 
   const invitesQ = useQuery({
     queryKey: ["team-invites"],
-    queryFn: async (): Promise<Invite[]> => {
-      const { data, error } = await supabase
-        .from("invites")
-        .select("id, email, created_at, accepted_at")
-        .is("accepted_at", null)
-        .order("created_at", { ascending: false });
-      if (error) throw error;
-      return (data ?? []) as Invite[];
-    },
-    enabled: profileQ.data?.role === "admin",
+    queryFn: () => apiFetch<Invite[]>("/team/invites"),
+    enabled: isAdmin,
   });
 
   const inviteMut = useMutation({
-    mutationFn: async (target: string) => {
-      const { data, error } = await supabase.functions.invoke("invite-user", {
-        body: { email: target },
-      });
-      if (error) {
-        throw new Error(
-          await edgeErrorMessage(error, "Falha ao enviar o convite"),
-        );
-      }
-      return data as { ok: true; email: string };
-    },
+    mutationFn: (target: string) =>
+      apiFetch<{ id: string; email: string }>("/team/invites", {
+        method: "POST",
+        body: JSON.stringify({ email: target }),
+      }),
     onSuccess: (d) => {
-      toast.success(`Convite enviado para ${d.email}. O e-mail chega em instantes.`);
+      const link = inviteLink(d.id);
+      navigator.clipboard?.writeText(link).catch(() => {});
+      toast.success(
+        `Convite criado para ${d.email}. O link já foi copiado — envie você mesmo.`,
+      );
       setEmail("");
       qc.invalidateQueries({ queryKey: ["team-invites"] });
     },
-    onError: (e) => toast.error((e as Error).message),
+    onError: (e) =>
+      toast.error(e instanceof ApiError ? e.message : "Falha ao criar o convite"),
   });
 
   const removeInviteMut = useMutation({
-    mutationFn: async (id: string) => {
-      const { error } = await supabase.from("invites").delete().eq("id", id);
-      if (error) throw error;
-    },
+    mutationFn: (id: string) => apiFetch(`/team/invites/${id}`, { method: "DELETE" }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["team-invites"] }),
-    onError: (e) => toast.error((e as Error).message),
+    onError: (e) =>
+      toast.error(e instanceof ApiError ? e.message : "Falha ao remover o convite"),
   });
+
+  const copyInvite = (id: string) => {
+    navigator.clipboard?.writeText(inviteLink(id)).catch(() => {});
+    toast.success("Link copiado.");
+  };
 
   const handleLogout = async () => {
     if (authed) await authed.logout();
     qc.clear();
     navigate({ to: "/login", replace: true });
   };
-
-  const isAdmin = profileQ.data?.role === "admin";
 
   return (
     <>
@@ -139,9 +130,9 @@ function TeamPage() {
                 </div>
                 <div className="ic-insight-body">
                   O cadastro direto está bloqueado: novos usuários só entram por
-                  convite. Ao convidar, o Supabase envia automaticamente um
-                  e-mail com o link de acesso — a pessoa define a senha e já cai
-                  na plataforma.
+                  convite. Ao convidar, o link já é copiado para sua área de
+                  transferência — envie você mesmo por WhatsApp ou e-mail. A
+                  pessoa abre o link, define a senha e já cai na plataforma.
                 </div>
               </div>
             </div>
@@ -173,7 +164,7 @@ function TeamPage() {
                 disabled={inviteMut.isPending}
               >
                 <UserPlus size={14} />
-                {inviteMut.isPending ? "Enviando…" : "Convidar"}
+                {inviteMut.isPending ? "Criando…" : "Convidar"}
               </button>
             </form>
 
@@ -199,8 +190,17 @@ function TeamPage() {
                         {inv.email}
                       </span>
                       <span style={{ fontSize: 12, color: "var(--via-color-text-muted)" }}>
-                        enviado em {new Date(inv.created_at).toLocaleDateString("pt-BR")}
+                        criado em {new Date(inv.created_at).toLocaleDateString("pt-BR")}
                       </span>
+                      <button
+                        type="button"
+                        className="ic-iconbtn"
+                        title="Copiar link do convite"
+                        aria-label={`Copiar link do convite de ${inv.email}`}
+                        onClick={() => copyInvite(inv.id)}
+                      >
+                        <Copy size={14} />
+                      </button>
                       <button
                         type="button"
                         className="ic-iconbtn"

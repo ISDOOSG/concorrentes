@@ -5,10 +5,9 @@ import {
   useNavigate,
   useRouterState,
 } from "@tanstack/react-router";
-import type { Session } from "@supabase/supabase-js";
 import { FlaskConical, Menu } from "lucide-react";
 
-import { supabase } from "@/integrations/supabase/client";
+import { getSession, onAuthChange, type ApiSession } from "@/lib/api-client";
 import { AppSidebar, type NavItemId } from "@/components/ic/app-sidebar";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -17,40 +16,39 @@ import { useAlerts } from "@/lib/data/hooks/use-alerts";
 import { useCompetitors } from "@/lib/data/hooks/use-competitors";
 
 export const Route = createFileRoute("/_authed")({
-  // IMPORTANTE: NÃO usar `beforeLoad` para checar sessão aqui.
-  // `beforeLoad` é isomórfico (roda no SSR também), mas a sessão Supabase
-  // vive em `localStorage` (client-only) — no servidor sempre retornaria
-  // `null` e expulsaria o usuário a cada HMR/reload. O guard é feito no
-  // cliente, dentro do componente.
+  // IMPORTANTE: NAO usar `beforeLoad` para checar sessao aqui.
+  // `beforeLoad` e isomorfico (roda no SSR tambem), mas a sessao vive em
+  // `localStorage` (client-only) -- no servidor sempre retornaria `null` e
+  // expulsaria o usuario a cada HMR/reload. O guard e feito no cliente,
+  // dentro do componente.
   component: AuthedLayout,
 });
 
 function AuthedLayout() {
   const navigate = useNavigate();
-  const [session, setSession] = useState<Session | null | "loading">("loading");
+  const [session, setSession] = useState<ApiSession | null | "loading">("loading");
   const location = useRouterState({ select: (s) => s.location });
   const redirectedRef = useRef(false);
 
   useEffect(() => {
     let mounted = true;
-    supabase.auth.getSession().then(({ data }) => {
-      if (mounted) setSession(data.session);
-    });
-    const { data: sub } = supabase.auth.onAuthStateChange((_event, s) => {
-      if (!mounted) return;
-      setSession(s);
-      // Reset flag quando o usuário volta a ter sessão (re-login)
-      if (s) redirectedRef.current = false;
-    });
+    const load = () => {
+      getSession().then((s) => {
+        if (!mounted) return;
+        setSession(s);
+        if (s) redirectedRef.current = false;
+      });
+    };
+    load();
+    const unsub = onAuthChange(load);
     return () => {
       mounted = false;
-      sub.subscription.unsubscribe();
+      unsub();
     };
   }, []);
 
   useEffect(() => {
-    // Redireciona apenas UMA vez por "perda de sessão" — evita o loop
-    // do <Transitioner> que aparecia antes.
+    // Redireciona apenas UMA vez por "perda de sessao" -- evita loop.
     if (session === null && !redirectedRef.current) {
       redirectedRef.current = true;
       const current =
@@ -70,7 +68,6 @@ function AuthedLayout() {
   }
 
   if (session === null) {
-    // beforeLoad já deveria ter redirecionado; isto é só fallback defensivo
     return <FullScreenLoader />;
   }
 
@@ -83,7 +80,7 @@ function AuthedShell({
   session,
   currentNavId,
 }: {
-  session: Session;
+  session: ApiSession;
   currentNavId: NavItemId;
 }) {
   const navigate = useNavigate();
@@ -106,8 +103,7 @@ function AuthedShell({
 
   const userEmail = session.user.email ?? "Sua conta";
   const userInitials = (userEmail[0] ?? "A").toUpperCase();
-  const userMetaName =
-    (session.user.user_metadata?.full_name as string | undefined) ?? userEmail;
+  const userMetaName = session.user.nome ?? userEmail;
 
   const counts: Partial<Record<NavItemId, number>> = {
     competitors: competitorsQ.data?.length,

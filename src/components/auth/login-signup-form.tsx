@@ -5,7 +5,7 @@ import { useNavigate } from "@tanstack/react-router";
 import { User, Lock, Mail } from "lucide-react";
 import { toast } from "sonner";
 
-import { supabase } from "@/integrations/supabase/client";
+import { getSession, signInWithPassword, signUp, ApiError } from "@/lib/api-client";
 import {
   loginSchema,
   signupSchema,
@@ -29,12 +29,10 @@ export function LoginSignupForm({
   const [isActive, setIsActive] = useState(initialMode === "register");
   const navigate = useNavigate();
 
-  // Se o usuário já está logado, manda direto para o destino (dashboard
-  // por padrão). Evita ter que logar de novo após HMR/reload.
   useEffect(() => {
     let mounted = true;
-    supabase.auth.getSession().then(({ data }) => {
-      if (mounted && data.session) {
+    getSession().then((session) => {
+      if (mounted && session) {
         navigate({ to: redirectTo, replace: true });
       }
     });
@@ -54,8 +52,9 @@ export function LoginSignupForm({
   });
 
   const submitLogin = loginForm.handleSubmit(async (values) => {
-    const { error } = await supabase.auth.signInWithPassword(values);
-    if (error) {
+    try {
+      await signInWithPassword(values.email, values.password);
+    } catch {
       toast.error("E-mail ou senha incorretos");
       return;
     }
@@ -64,40 +63,15 @@ export function LoginSignupForm({
   });
 
   const submitSignup = signupForm.handleSubmit(async (values) => {
-    const { error } = await supabase.auth.signUp({
-      email: values.email,
-      password: values.password,
-      options: {
-        emailRedirectTo: `${window.location.origin}/dashboard`,
-        data: { full_name: values.fullName?.trim() || null },
-      },
-    });
-    if (error) {
-      const code = (error as { code?: string }).code ?? "";
-      const lower = error.message.toLowerCase();
+    try {
+      await signUp(values.email, values.password, values.fullName?.trim() || undefined);
+    } catch (e) {
       let msg = "Não foi possível criar a conta";
-      if (code === "weak_password" || lower.includes("weak") || lower.includes("pwned")) {
-        msg =
-          "Essa senha é muito fraca ou já vazou em algum incidente público. Escolha outra (use letras, números e símbolos).";
-      } else if (
-        lower.includes("already registered") ||
-        lower.includes("already exists") ||
-        lower.includes("already")
-      ) {
-        msg = "Este e-mail já está cadastrado. Tente entrar.";
-      } else if (
-        lower.includes("signup_by_invite_only") ||
-        lower.includes("database error saving new user") ||
-        code === "unexpected_failure"
-      ) {
-        msg =
-          "O cadastro direto está desativado: o acesso é por convite. Peça um convite ao administrador da plataforma.";
-      } else if (lower.includes("invalid") && lower.includes("email")) {
-        msg = "E-mail inválido.";
-      } else if (lower.includes("rate") || code === "over_email_send_rate_limit") {
-        msg = "Muitas tentativas. Aguarde alguns segundos e tente novamente.";
-      } else if (error.message) {
-        msg = error.message;
+      if (e instanceof ApiError) {
+        // 403 aqui e o bootstrap-only: so o primeiro usuario cadastra
+        // direto, os demais entram por convite. Mensagem ja vem pronta
+        // da API.
+        msg = e.message || msg;
       }
       toast.error(msg);
       return;
