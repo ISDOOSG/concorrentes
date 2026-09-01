@@ -39,3 +39,12 @@ dist-ssr
 .pgpass
 .env.db
 
+# --- 01/09: nada de credencial no git ---
+# O .claude/settings.local.json guardava um token do Apify em comandos curl
+# salvos como permissao do Claude Code. Ficou no historico ate 01/09, quando
+# foi removido com filter-branch. O token foi rotacionado no painel.
+.claude/
+.env
+.env.*
+!.env.example
+.pgpass
