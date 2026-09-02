@@ -25,6 +25,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, EmailStr, Field
 
 import auth
+import coletores
 import db
 import ia
 
@@ -42,6 +43,12 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+@app.exception_handler(coletores.ErroExterno)
+def _falha_externa(request, exc):
+    """Falha de Firecrawl/ScrapeCreators vira mensagem legivel, nao 500."""
+    return JSONResponse(status_code=exc.status, content={"detail": exc.mensagem})
+
 
 @app.exception_handler(ia.ErroIA)
 def _falha_de_ia(request, exc):
@@ -248,9 +255,96 @@ def vincular_ads(cid: uuid.UUID, v: VinculoAds, u=Depends(auth.usuario_atual)):
         raise HTTPException(404, "Concorrente nao encontrado.")
 
 
-@app.post("/competitors/{cid}/crawl", status_code=501)
+@app.post("/competitors/{cid}/crawl", status_code=201)
 def disparar_crawl(cid: uuid.UUID, u=Depends(auth.usuario_atual)):
-    raise HTTPException(501, FALTA_TERCEIRO.format(servico="Firecrawl"))
+    """Porta a edge function `crawl-competitor`.
+
+    Faz a cadeia inteira que os gatilhos do banco faziam por `pg_net`:
+    raspa, grava snapshot, compara com o anterior e grava as mudancas. Os
+    alertas NAO sao inseridos aqui -- o gatilho `on_change_inserted` ja o faz
+    dentro do banco, e inserir dos dois lados duplicaria todo alerta.
+    """
+    comp = db.um(
+        "select id, name, url from public.competitors where id = %s and user_id = %s",
+        (str(cid), u["id"]),
+    )
+    if not comp:
+        raise HTTPException(404, "Concorrente nao encontrado.")
+
+    # Trava de idempotencia herdada da original: credito de Firecrawl e
+    # finito, e dois cliques seguidos nao podem custar dois crawls.
+    recente = db.um(
+        "select id from public.snapshots where competitor_id = %s "
+        "and crawled_at > now() - interval '60 seconds' limit 1",
+        (str(cid),),
+    )
+    if recente:
+        raise HTTPException(
+            429, "Ja houve um crawl deste concorrente ha menos de 1 minuto."
+        )
+
+    db.executar(
+        "update public.competitors set crawl_status = 'running', "
+        "crawl_started_at = now(), crawl_error = null where id = %s",
+        (str(cid),),
+    )
+    try:
+        markdown, meta = coletores.raspar(u["id"], comp["url"])
+    except coletores.ErroExterno as e:
+        db.executar(
+            "update public.competitors set crawl_status = 'failed', "
+            "crawl_error = %s where id = %s",
+            (e.mensagem[:500], str(cid)),
+        )
+        raise
+
+    estruturado = coletores.extrair(markdown)
+    impressao = coletores.impressao(markdown)
+
+    anterior = db.um(
+        "select id, content_hash, structured_data from public.snapshots "
+        "where competitor_id = %s order by crawled_at desc limit 1",
+        (str(cid),),
+    )
+
+    novo = db.um(
+        "insert into public.snapshots (user_id, competitor_id, content_hash, "
+        "raw_text, structured_data, source) values (%s, %s, %s, %s, %s, 'firecrawl') "
+        "returning id",
+        (u["id"], str(cid), impressao, markdown,
+         json.dumps(estruturado, ensure_ascii=False)),
+    )
+
+    mudancas = []
+    if anterior:
+        mudancas = coletores.comparar(
+            anterior["structured_data"] or {},
+            estruturado,
+            anterior["content_hash"] == impressao,
+        )
+        for m in mudancas:
+            db.executar(
+                "insert into public.changes (user_id, competitor_id, "
+                "from_snapshot_id, to_snapshot_id, change_type, severity, "
+                "summary, diff) values (%s, %s, %s, %s, %s, %s, %s, %s)",
+                (u["id"], str(cid), anterior["id"], novo["id"],
+                 m["change_type"], m["severity"], m["summary"][:500],
+                 json.dumps(m["diff"], ensure_ascii=False)),
+            )
+
+    db.executar(
+        "update public.competitors set crawl_status = 'success', "
+        "crawl_error = null, last_crawled_at = now() where id = %s",
+        (str(cid),),
+    )
+    return {
+        "snapshot_id": novo["id"],
+        "titulo": meta.get("title"),
+        "caracteres": len(markdown),
+        "precos_encontrados": len(estruturado["prices"]),
+        "mudancas_detectadas": len(mudancas),
+        "primeiro_crawl": anterior is None,
+    }
 
 
 # -------------------------------------------------------------------- alertas
@@ -475,9 +569,55 @@ def listar_ads(cid: uuid.UUID, u=Depends(auth.usuario_atual)):
     )
 
 
-@app.post("/competitors/{cid}/ads/fetch", status_code=501)
+@app.post("/competitors/{cid}/ads/fetch", status_code=201)
 def buscar_ads(cid: uuid.UUID, u=Depends(auth.usuario_atual)):
-    raise HTTPException(501, FALTA_TERCEIRO.format(servico="ScrapeCreators"))
+    """Porta a parte Meta da edge function `fetch-competitor-ads`.
+
+    Google Ads ainda nao: depende de `google_advertiser_id`, que so e
+    preenchido pela sugestao por IA (`suggest-ads-links`), ainda nao portada.
+    """
+    comp = db.um(
+        "select id, facebook_page_id from public.competitors "
+        "where id = %s and user_id = %s",
+        (str(cid), u["id"]),
+    )
+    if not comp:
+        raise HTTPException(404, "Concorrente nao encontrado.")
+    if not comp["facebook_page_id"]:
+        raise HTTPException(
+            409,
+            "Este concorrente ainda nao tem pagina do Facebook vinculada. "
+            "Vincule o ID da pagina antes de buscar anuncios.",
+        )
+
+    anuncios = coletores.anuncios_meta(u["id"], comp["facebook_page_id"])
+    gravados = 0
+    for a in anuncios:
+        if not a["ad_archive_id"]:
+            continue
+        db.executar(
+            "insert into public.ads_snapshots (user_id, competitor_id, source, "
+            "ad_archive_id, fetched_date, active, body_text, cta_text, cta_url, "
+            "page_name, creatives, start_date, platforms, raw) "
+            "values (%s, %s, 'meta', %s, current_date, %s, %s, %s, %s, %s, %s, "
+            "%s, %s, %s) "
+            "on conflict (competitor_id, source, ad_archive_id, fetched_date) "
+            "do update set active = excluded.active, "
+            "body_text = excluded.body_text, cta_text = excluded.cta_text, "
+            "creatives = excluded.creatives, raw = excluded.raw",
+            (u["id"], str(cid), a["ad_archive_id"], a["active"], a["body_text"],
+             a["cta_text"], a["cta_url"], a["page_name"],
+             json.dumps(a["creatives"], ensure_ascii=False) if a["creatives"] else None,
+             a["start_date"], a["platforms"],
+             json.dumps(a["raw"], ensure_ascii=False)),
+        )
+        gravados += 1
+
+    db.executar(
+        "update public.competitors set last_ads_fetched_at = now() where id = %s",
+        (str(cid),),
+    )
+    return {"ok": True, "anuncios_recebidos": len(anuncios), "gravados": gravados}
 
 
 @app.get("/competitors/{cid}/ads-suggestion")
@@ -609,11 +749,11 @@ def apagar_chave_scraper(provider: str, u=Depends(auth.usuario_atual)):
     )
 
 
-@app.post("/scraper-keys/{provider}/test", status_code=501)
+@app.post("/scraper-keys/{provider}/test")
 def testar_chave_scraper(provider: str, u=Depends(auth.usuario_atual)):
-    raise HTTPException(
-        501, FALTA_TERCEIRO.format(servico="Firecrawl / ScrapeCreators")
-    )
+    """Porta a edge function `test-scraper-key`: uma chamada barata que
+    prova se a chave e aceita, sem gastar coleta de verdade."""
+    return coletores.testar_chave(u["id"], provider)
 
 
 # --------------------------------------------------------------- equipe/convite
@@ -971,10 +1111,69 @@ def ver_social(cid: uuid.UUID, platform: str = "instagram",
     )
 
 
-@app.post("/competitors/{cid}/social/fetch", status_code=501)
+@app.post("/competitors/{cid}/social/fetch", status_code=201)
 def buscar_social(cid: uuid.UUID, platform: str = "instagram",
                   u=Depends(auth.usuario_atual)):
-    raise HTTPException(501, FALTA_TERCEIRO.format(servico="ScrapeCreators"))
+    """Porta a edge function `fetch-competitor-social`."""
+    if platform != "instagram":
+        raise HTTPException(400, "So o Instagram esta portado por enquanto.")
+    comp = db.um(
+        "select id, instagram_handle from public.competitors "
+        "where id = %s and user_id = %s",
+        (str(cid), u["id"]),
+    )
+    if not comp:
+        raise HTTPException(404, "Concorrente nao encontrado.")
+    if not comp["instagram_handle"]:
+        raise HTTPException(
+            409, "Este concorrente ainda nao tem handle de Instagram definido."
+        )
+
+    perfil = coletores.perfil_instagram(u["id"], comp["instagram_handle"])
+
+    antes = db.um(
+        "select followers from public.social_snapshots where competitor_id = %s "
+        "and platform = %s order by fetched_at desc limit 1",
+        (str(cid), platform),
+    )
+    delta = (perfil["followers"] - antes["followers"]
+             if antes and antes["followers"] is not None else None)
+
+    # A unique e (competitor_id, platform, fetched_date): duas coletas no
+    # mesmo dia atualizam a linha do dia, nao criam uma segunda.
+    linha = db.um(
+        "insert into public.social_snapshots (user_id, competitor_id, platform, "
+        "handle, followers, following, posts_count, is_verified, is_business, "
+        "bio, external_url, category, profile_pic_url, recent_posts) "
+        "values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) "
+        "on conflict (competitor_id, platform, fetched_date) do update set "
+        "fetched_at = now(), handle = excluded.handle, "
+        "followers = excluded.followers, following = excluded.following, "
+        "posts_count = excluded.posts_count, is_verified = excluded.is_verified, "
+        "is_business = excluded.is_business, bio = excluded.bio, "
+        "external_url = excluded.external_url, category = excluded.category, "
+        "profile_pic_url = excluded.profile_pic_url, "
+        "recent_posts = excluded.recent_posts returning id",
+        (u["id"], str(cid), platform, perfil["handle"], perfil["followers"],
+         perfil["following"], perfil["posts_count"], perfil["is_verified"],
+         perfil["is_business"], perfil["bio"], perfil["external_url"],
+         perfil["category"], perfil["profile_pic_url"],
+         json.dumps(perfil["recent_posts"], ensure_ascii=False)),
+    )
+    db.executar(
+        "update public.competitors set last_instagram_fetched_at = now() "
+        "where id = %s",
+        (str(cid),),
+    )
+    return {
+        "ok": True,
+        "snapshot_id": linha["id"],
+        "handle": perfil["handle"],
+        "source": "scrapecreators",
+        "followers": perfil["followers"],
+        "followers_delta": delta,
+        "posts_returned": len(perfil["recent_posts"]),
+    }
 
 
 @app.post("/competitors/{cid}/social/analyze", status_code=201)

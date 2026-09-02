@@ -103,6 +103,66 @@ Velasco: 409 antes do dado, `201` depois, `GET` relendo o gravado, o segundo
 Instagram limpo no servidor (`  @PastelariaVelasco/  ` → `pastelariavelasco`),
 e isolamento entre usuários. Dado de teste apagado no fim.
 
+## Coletores próprios — `coletores.py`, escrito em 2026-09-02
+
+Porta `crawl-competitor`, `fetch-competitor-social`, `fetch-competitor-ads`
+(parte Meta) e `test-scraper-key`. Mesma regra do `ia.py`: `urllib` da
+biblioteca padrão, chave BYOK do usuário primeiro e chave do serviço como piso.
+
+| Rota | O que faz |
+|---|---|
+| `POST /competitors/{id}/crawl` | Firecrawl v2 → snapshot → diff contra o anterior → `changes` |
+| `POST /competitors/{id}/social/fetch` | ScrapeCreators → `social_snapshots` (upsert do dia) |
+| `POST /competitors/{id}/ads/fetch` | ScrapeCreators → `ads_snapshots` (Meta) |
+| `POST /scraper-keys/{provider}/test` | uma chamada barata que prova a chave |
+
+**Duas diferenças deliberadas em relação à edge function original:**
+
+1. **Sem screenshot.** A original subia o PNG para o Storage da Supabase, que
+   não existe aqui. `snapshots.screenshot_path` fica `NULL` até haver um lugar
+   decidido para guardar imagem. O crawl não falha por isso.
+2. **Não insere em `alerts`.** A original inseria explicitamente, mas o gatilho
+   `on_change_inserted` → `invoke_generate_alerts()` já faz isso dentro do
+   banco — e esse gatilho veio na migração. Inserir dos dois lados duplicaria
+   todo alerta.
+
+⚠️ **Crédito é finito.** Medido em 02/09: Firecrawl com **1000** créditos no
+período (renova 02/10), ScrapeCreators com **100**. Cada perfil de Instagram
+custa 1; cada busca de anúncio custa 1. Por isso o crawl herdou a trava de
+idempotência de 60 s da original.
+
+### 🚨 O defeito que só aparece no segundo crawl
+
+**A detecção de mudanças nunca funcionou, nem na Lovable.** A edge function
+gravava `change_type` `"pricing"` / `"content"` e `severity`
+`"high"` / `"medium"` / `"low"`. A tabela `changes` só aceita
+`price|copy|feature|design|traffic` e `info|warning|critical` — toda inserção
+de mudança violava o CHECK. Ninguém viu porque o banco de origem estava vazio
+e um segundo crawl nunca aconteceu.
+
+O vocabulário agora é o que o front já lê (`SEVERITY_FROM_DB` e
+`CHANGE_TYPE_FROM_DB` em `providers/adapters.ts`) — **escolha minha, não
+herdada**:
+
+| Mudança | `change_type` | `severity` | Gera alerta? |
+|---|---|---|---|
+| Preços | `price` | `critical` | sim |
+| CTAs | `copy` | `warning` | sim |
+| H1 | `copy` | `info` | **não** |
+| Conteúdo, sem sinal estruturado | `traffic` (o front lê como "content") | `info` | **não** |
+
+`info` não gera alerta porque `invoke_generate_alerts` pula essa severidade de
+propósito — mudança pequena fica registrada e silenciosa.
+
+**PROVADO em 02/09, pelo domínio público**, contra `https://imagohub.com.br`
+(site do próprio dono, para não bater em terceiro num teste): primeiro crawl
+`201` com 6.785 caracteres e o título real da página; segundo crawl imediato
+`429` pela trava; depois de envelhecer o snapshot anterior e trocar o que ele
+dizia ter visto, o terceiro crawl detectou **3 mudanças** e o gatilho gerou
+**2 alertas** (o `info` ficou de fora, como desenhado). O Instagram foi
+coletado de verdade — 12 posts, 268.646.292 seguidores — e analisado em
+seguida. Dado de teste apagado no fim.
+
 ## O front não fala mais com a Supabase
 
 Em 02/09 saíram as duas últimas amarras:
@@ -144,36 +204,38 @@ como as outras cinco?
 
 ## O que ainda responde 501, e por quê
 
-`POST /competitors/{id}/crawl` (Firecrawl) ·
-`POST /competitors/{id}/social/fetch` (ScrapeCreators) ·
-`POST /competitors/{id}/ads/fetch` (ScrapeCreators) ·
-`POST /competitors/{id}/ads-suggestion` (ScrapeCreators + LLM) ·
-`POST /scraper-keys/{provider}/test` (Firecrawl / ScrapeCreators)
+`POST /competitors/{id}/ads-suggestion` — porta de `suggest-ads-links`, que
+usa ScrapeCreators **mais** LLM para adivinhar qual página do Facebook e qual
+anunciante do Google correspondem ao concorrente. É a única que sobrou.
 
-Falham alto, com mensagem dizendo de qual serviço dependem — em vez de
-devolver vazio e parecer que funcionaram. **As cinco dependem de chave que o
-dono ainda não forneceu**, não de código por escrever: a parte de IA já existe
-em `ia.py`.
+Ela importa mais do que parece: `POST /ads/fetch` depende de
+`competitors.facebook_page_id`, e hoje esse campo só é preenchido à mão ou por
+essa sugestão. Sem ela, buscar anúncios exige o dono colar o ID da página.
 
 ## O que falta para o produto rodar 100% aqui
 
-1. **Chave Firecrawl e chave ScrapeCreators.** Sem elas, nenhum dado entra no
-   sistema — e sem dado, SWOT, SEO e Social respondem 409 corretamente, mas
-   respondem 409.
-2. Portar os coletores `crawl-competitor`, `fetch-competitor-social` e
-   `fetch-competitor-ads`, e refazer em serviço a cadeia que os 4 gatilhos do
-   banco faziam por `pg_net` — extensão que **não existe** no banco novo.
-   Hoje a cadeia está cortada: criar concorrente grava `crawl_status='failed'`
-   com uma mensagem que manda chamar `bootstrap-app-config`, edge function que
-   não existe mais.
-3. Agendamento dos dois "daily" (crawl e anúncios) como cron da VPS.
-4. Trocar o `vite.config.ts`, que hoje é `defineConfig()` de
+1. **`suggest-ads-links`** — a última edge function com uso vivo, e a que
+   destrava a busca de anúncios sem digitação manual.
+2. **Agendamento.** `daily-crawl-scheduler` e `daily-ads-scheduler` eram cron
+   da Supabase. Aqui viram cron da VPS, chamando as rotas que já existem.
+3. **Os quatro gatilhos do banco** (`on_competitor_inserted`,
+   `on_snapshot_inserted`, `on_snapshot_suggest_ads`, `on_change_inserted`
+   para o `pg_net`) continuam apontando para edge functions. Três deles param
+   na guarda do `app_config` vazio e não fazem nada; o quarto,
+   `invoke_generate_alerts`, é o único que funciona e é usado. ⏳ Decisão do
+   dono: derrubar os três inertes, já que o serviço faz o trabalho deles?
+   Enquanto ficarem, um `app_config` preenchido por engano os reativaria
+   contra um destino que não existe.
+4. **A mensagem que o produto mostra ao nascer.** Criar um concorrente ainda
+   grava `crawl_status = 'failed'` com *"Configuração inicial pendente: chame
+   bootstrap-app-config"* — texto do gatilho `on_competitor_inserted`, que
+   aponta para uma edge function que não existe mais. O primeiro crawl corrige
+   o estado, mas até lá a tela mente.
+5. Trocar o `vite.config.ts`, que hoje é `defineConfig()` de
    `@lovable.dev/vite-tanstack-config` — última dependência de código da
-   Lovable. Está público no npm, então dá para reinstalar, mas o pipeline de
-   build é deles.
-5. Apagar `supabase/functions/` (13 funções) quando os coletores estiverem
-   portados.
-6. Revogar `EXECUTE` de PUBLIC em `get_llm_key` / `get_scraper_key`.
-7. Backup do banco e cópia da `CONCORRENTES_CRIPTO_CHAVE` fora da VPS — hoje
-   é cópia única, e sem ela as chaves BYOK viram texto cifrado indecifrável.
-8. Decidir a FK de `social_snapshots` / `social_analyses` (armadilha 2, acima).
+   Lovable.
+6. Apagar `supabase/functions/` quando o item 1 estiver portado.
+7. Revogar `EXECUTE` de PUBLIC em `get_llm_key` / `get_scraper_key`.
+8. Backup do banco e cópia da `CONCORRENTES_CRIPTO_CHAVE` fora da VPS.
+9. Decidir a FK de `social_snapshots` / `social_analyses`.
+10. Onde guardar screenshot de crawl, se for para ter.
