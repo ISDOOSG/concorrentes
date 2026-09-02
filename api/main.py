@@ -16,14 +16,17 @@ O QUE RESPONDE 501: as operacoes que dependem de terceiro (Firecrawl,
 ScrapeCreators, LLM). Falham alto e dizem o que falta, em vez de devolver
 vazio e parecer que funcionaram.
 """
+import json
 import uuid
 
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, EmailStr, Field
 
 import auth
 import db
+import ia
 
 app = FastAPI(title="Concorrentes API", version="0.1.0")
 
@@ -39,6 +42,12 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+@app.exception_handler(ia.ErroIA)
+def _falha_de_ia(request, exc):
+    """Falha de IA vira mensagem que o usuario le, nao 500 generico."""
+    return JSONResponse(status_code=exc.status, content={"detail": exc.mensagem})
+
 
 CHAVE_CRIPTO = db.CFG.get("CONCORRENTES_CRIPTO_CHAVE")
 if not CHAVE_CRIPTO:
@@ -301,9 +310,140 @@ def ver_swot(cid: uuid.UUID, u=Depends(auth.usuario_atual)):
     return linha
 
 
-@app.post("/competitors/{cid}/swot", status_code=501)
+SWOT_SISTEMA = """Você é um analista sênior de inteligência competitiva.
+Gere uma análise SWOT em português do Brasil sobre um concorrente, usando APENAS os dados fornecidos.
+Para cada quadrante (Forças, Fraquezas, Oportunidades, Ameaças), produza 3 a 4 itens.
+Cada item tem:
+- title: até 6 palavras, direto e específico
+- evidence: 1 a 2 frases citando dado concreto extraído do contexto (preço, headline, CTA, anúncio, número de seguidores, etc.). Não invente dados que não estão no contexto.
+Retorne APENAS o JSON no formato { strengths:[...], weaknesses:[...], opportunities:[...], threats:[...] }."""
+
+QUADRANTES = ("strengths", "weaknesses", "opportunities", "threats")
+
+
+def _contexto_swot(cid, user_id, comp):
+    """Monta o prompt com o que o banco tem hoje. Devolve (texto, tem_dado)."""
+    linhas = ["Concorrente: %s" % comp["name"], "URL: %s" % comp["url"], ""]
+    tem_dado = False
+
+    snap = db.um(
+        "select raw_text, structured_data from public.snapshots "
+        "where competitor_id = %s and user_id = %s order by crawled_at desc limit 1",
+        (cid, user_id),
+    )
+    if snap:
+        tem_dado = True
+        linhas += [
+            "=== Ultimo snapshot do site (markdown extraido) ===",
+            (snap["raw_text"] or "")[:6000],
+            "",
+            "=== Dados estruturados do site ===",
+            json.dumps(snap["structured_data"] or {}, ensure_ascii=False)[:2000],
+            "",
+        ]
+
+    ads = db.varios(
+        "select body_text, cta_text, active from public.ads_snapshots "
+        "where competitor_id = %s and user_id = %s order by fetched_at desc limit 10",
+        (cid, user_id),
+    )
+    if ads:
+        tem_dado = True
+        linhas.append("=== Anuncios recentes (%d) ===" % len(ads))
+        for a in ads:
+            linhas.append(
+                '- [%s] CTA="%s" | %s'
+                % (
+                    "ativo" if a["active"] else "inativo",
+                    a["cta_text"] or "",
+                    (a["body_text"] or "")[:240],
+                )
+            )
+        linhas.append("")
+
+    ig = db.um(
+        "select bio, followers, posts_count from public.social_snapshots "
+        "where competitor_id = %s and user_id = %s and platform = 'instagram' "
+        "order by fetched_at desc limit 1",
+        (cid, user_id),
+    )
+    if ig:
+        tem_dado = True
+        linhas.append(
+            '=== Instagram === bio="%s" | seguidores=%s | posts=%s'
+            % (ig["bio"] or "", ig["followers"] or "?", ig["posts_count"] or "?")
+        )
+
+    return "\n".join(linhas), tem_dado
+
+
+def _normalizar_swot(bruto):
+    """Corta o que o modelo devolveu no formato que a tabela aceita.
+
+    Sem isto, um quadrante a mais ou um item gigante entraria no banco como
+    veio. Os limites sao os mesmos da edge function original.
+    """
+    saida = {q: [] for q in QUADRANTES}
+    if not isinstance(bruto, dict):
+        return saida
+    for q in QUADRANTES:
+        itens = bruto.get(q)
+        if not isinstance(itens, list):
+            continue
+        for it in itens[:4]:
+            if not isinstance(it, dict):
+                continue
+            titulo = it.get("title")
+            if not isinstance(titulo, str) or not titulo.strip():
+                continue
+            prova = it.get("evidence")
+            saida[q].append({
+                "title": titulo[:120],
+                "evidence": prova[:600] if isinstance(prova, str) else "",
+            })
+    return saida
+
+
+@app.post("/competitors/{cid}/swot", status_code=201)
 def gerar_swot(cid: uuid.UUID, u=Depends(auth.usuario_atual)):
-    raise HTTPException(501, FALTA_TERCEIRO.format(servico="provedor de LLM"))
+    comp = db.um(
+        "select id, name, url from public.competitors where id = %s and user_id = %s",
+        (str(cid), u["id"]),
+    )
+    if not comp:
+        raise HTTPException(404, "Concorrente nao encontrado.")
+
+    prompt, tem_dado = _contexto_swot(str(cid), u["id"], comp)
+    if not tem_dado:
+        # Sem snapshot, anuncio ou Instagram o modelo so teria nome e URL --
+        # e devolveria analise inventada com cara de analise real.
+        raise HTTPException(
+            409,
+            "Nao ha dado coletado sobre este concorrente ainda. Rode um crawl "
+            "antes de gerar o SWOT.",
+        )
+
+    bruto, modelo, _tokens = ia.gerar_json(u["id"], SWOT_SISTEMA, prompt, uso="swot")
+    swot = _normalizar_swot(bruto)
+    if not any(swot[q] for q in QUADRANTES):
+        raise HTTPException(
+            502, "O modelo %s respondeu, mas sem nenhum item aproveitavel." % modelo
+        )
+
+    return db.um(
+        "insert into public.swot_reports "
+        "(user_id, competitor_id, strengths, weaknesses, opportunities, threats, llm_model) "
+        "values (%s, %s, %s, %s, %s, %s, %s) returning *",
+        (
+            u["id"],
+            str(cid),
+            json.dumps(swot["strengths"], ensure_ascii=False),
+            json.dumps(swot["weaknesses"], ensure_ascii=False),
+            json.dumps(swot["opportunities"], ensure_ascii=False),
+            json.dumps(swot["threats"], ensure_ascii=False),
+            modelo,
+        ),
+    )
 
 
 # ------------------------------------------------------------------ snapshots
