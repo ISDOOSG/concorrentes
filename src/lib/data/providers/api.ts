@@ -1,6 +1,6 @@
 // DataProvider contra a API propria (FastAPI, porta 8012) -- substitui o
 // providers/supabase.ts. Reaproveita os adaptadores de linha->dominio de
-// supabase.ts (exportados de proposito para isso): minha API devolve as
+// adapters.ts (extraidos de la): minha API devolve as
 // mesmas colunas que o supabase-js devolvia, entao o mesmo mapeamento vale.
 import { apiFetch } from "@/lib/api-client";
 import {
@@ -8,7 +8,7 @@ import {
   adaptAlert,
   adaptCompetitor,
   adaptSnapshot,
-} from "./supabase";
+} from "./adapters";
 import type {
   Ad,
   Alert,

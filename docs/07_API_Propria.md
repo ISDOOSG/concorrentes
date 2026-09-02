@@ -26,7 +26,9 @@ chave BYOK por `SELECT` direto com o `user_id` do token. É o que o
 desenhar sem a superfície"*.
 
 **MEDIDO em 01/09:** com dois usuários criados, o segundo vê `0` concorrentes
-do primeiro, e o acesso direto ao `id` alheio devolve `404`.
+do primeiro, e o acesso direto ao `id` alheio devolve `404`. **Reconfirmado em
+02/09** nas rotas novas: `GET /competitors/{id}/seo` com token de outro
+usuário devolve `null`.
 
 ## O que está pronto
 
@@ -34,10 +36,8 @@ Identidade (`/auth/signup`, `/auth/login`, `/auth/me`) — bcrypt + JWT HS256,
 24h. O primeiro usuário cadastrado vira `admin` em `profiles`.
 
 CRUD e leitura, tudo que depende só do Postgres local:
-`competitors` (listar, ver, criar, alternar status, apagar, vincular ads) ·
-`alerts` (listar com join em `changes`, marcar lido) · `swot` (ler o último) ·
-`snapshots` (último e lista) · `ads` (listar, ler sugestão) ·
-`llm/settings` (provider, modelo, chaves) · `scraper-keys` (BYOK).
+`competitors` · `alerts` · `swot` · `snapshots` · `ads` · `llm/settings` ·
+`scraper-keys` · **`seo`** · **`social`** · **`instagram-handle`**.
 
 **As chaves BYOK são cifradas de verdade**, com `pgp_sym_encrypt` do pgcrypto
 e chave do `.env` — a coluna `encrypted_key` é `bytea`. MEDIDO: 92 bytes
@@ -57,6 +57,10 @@ instalar um.
 para o provedor escolhido → chave do serviço. Quem tiver `provider = 'lovable'`
 gravado (o padrão do laboratório) cai no Gemini do projeto em vez de falhar.
 
+O tool-calling que as edge functions usavam para garantir a forma da resposta
+virou **`responseSchema`** do Gemini: o Google valida a estrutura antes de
+devolver, em vez de o erro só aparecer no parse.
+
 ### 🚨 Os modelos das edge functions estão mortos
 
 **MEDIDO em 02/09**, contra a chave nova — não presumido:
@@ -73,63 +77,103 @@ O gratuito é instável no flash de topo: **o mesmo modelo respondeu numa
 chamada e recusou na seguinte**. Por isso `_com_queda()` tenta o modelo
 escolhido e, só quando ele vem congestionado, repete no leve. **A queda não é
 silenciosa:** o nome do modelo que rodou de fato é o que vai para a coluna
-`llm_model` do relatório.
+`model` / `llm_model` do relatório — nas provas de 02/09 as duas coisas
+aconteceram, e o registro mostra qual foi qual.
 
 ⚠️ No tier gratuito o Google usa o conteúdo enviado para melhorar os produtos
 deles. Como o prompt carrega dado de concorrente de cliente, migrar para o
 pago é decisão do dono — e é só habilitar cobrança no mesmo projeto, sem
 tocar em código.
 
-## `POST /competitors/{id}/swot` — porta da edge function `generate-swot`
+## As três operações de IA portadas
 
-Monta o contexto com o que o banco tem (último snapshot, até 10 anúncios,
-último perfil de Instagram), usa o mesmo prompt de sistema da edge function
-original, e normaliza a resposta antes de gravar: no máximo 4 itens por
-quadrante, `title` até 120 caracteres, `evidence` até 600.
+| Rota | Vem de | Regra própria |
+|---|---|---|
+| `POST /competitors/{id}/swot` | `generate-swot` | contexto = último snapshot + até 10 anúncios + último Instagram; 4 itens por quadrante, `title` 120, `evidence` 600 |
+| `POST /competitors/{id}/seo` | `analyze-seo-competitor` | nota travada em 0–100, `intent` só aceita os 4 valores do enum, **uma análise por concorrente** (update, não insert — o front lê com `maybeSingle`, que estoura com duas linhas) |
+| `POST /competitors/{id}/social/analyze` | `analyze-social-ig` | posts compactados antes do prompt; histórico preservado (uma linha por análise) |
 
-**Sem dado coletado, responde `409`** em vez de gerar análise. Com só nome e
-URL o modelo inventaria — e pareceria análise de verdade.
+**As três respondem `409` quando não há dado coletado**, em vez de gerar
+análise. Com só nome e URL o modelo inventaria — e pareceria análise de
+verdade.
 
-**PROVADO em 02/09, ponta a ponta**, com a Pastelaria Velasco: concorrente e
-snapshot criados, `POST` devolveu `201` com 12 itens citando preço, horário e
-canal de venda do texto do site; `GET` releu o relatório gravado; o dado de
-teste foi apagado e o banco voltou a `0` linhas em `competitors`,
-`snapshots` e `swot_reports`.
+**PROVADO em 02/09, ponta a ponta e pelo domínio público**, com a Pastelaria
+Velasco: 409 antes do dado, `201` depois, `GET` relendo o gravado, o segundo
+`POST` de SEO atualizando a mesma linha em vez de criar outra, o handle do
+Instagram limpo no servidor (`  @PastelariaVelasco/  ` → `pastelariavelasco`),
+e isolamento entre usuários. Dado de teste apagado no fim.
+
+## O front não fala mais com a Supabase
+
+Em 02/09 saíram as duas últimas amarras:
+
+- `src/lib/data/hooks/use-seo-analysis.ts` e `src/lib/social/api.ts` agora
+  usam `apiFetch`. Os adaptadores de linha→domínio não mudaram: a API devolve
+  as mesmas colunas que o `supabase-js` devolvia.
+- Os adaptadores que viviam em `providers/supabase.ts` foram extraídos para
+  **`providers/adapters.ts`**. Era por causa deles que o `supabase-js`
+  continuava no grafo de imports: `providers/api.ts` importava de lá.
+- `server-fns/` foi esvaziado (`seo`, `crawl`, `ads`, `integrations`) e o
+  `start.ts` perdeu o `attachSupabaseAuth` — sem server function, não há
+  middleware global a registrar.
+- `src/integrations/supabase/`, o `providers/supabase.ts` e a dependência
+  `@supabase/supabase-js` foram apagados; as `VITE_SUPABASE_*` saíram do `.env`.
+
+**MEDIDO no build publicado:** `grep -rl supabase .output/` não devolve
+**nenhum arquivo**, e o bundle do cliente cita `/seo`, `social/snapshots`,
+`social/analysis`, `social/analyze` e `instagram-handle`.
+
+## 🚨 Duas armadilhas medidas em 02/09
+
+**1. `npm run build` derruba o site.** O preset padrão do Nitro neste projeto
+é `cloudflare-module`: o `.output/server/index.mjs` sai exportando um handler
+de Worker, não subindo servidor. O serviço inicia, sai com código 0 em ~360 ms
+e o nginx passa a bater em porta vazia. **O build da VPS é
+`npm run build:vps`** (`NITRO_PRESET=node-server vite build`), script criado
+para que isso não dependa de alguém lembrar. Aconteceu de verdade: o front
+ficou fora por cerca de um minuto.
+
+**2. `social_snapshots` e `social_analyses` não têm chave estrangeira para
+`competitors`.** Apagar um concorrente deixa as duas linhas órfãs — provado
+duas vezes na limpeza dos testes. As outras cinco tabelas
+(`snapshots`, `changes`, `ads_snapshots`, `seo_analyses`, `swot_reports`)
+têm `ON DELETE CASCADE`. O `DB_SCHEMA.sql` já marcava isso como
+`TODO(revisao)`: **a origem na Supabase também não tinha a FK**, e a migração
+preservou verbatim. ⏳ Falta decisão do dono: entra FK com `ON DELETE CASCADE`,
+como as outras cinco?
 
 ## O que ainda responde 501, e por quê
 
 `POST /competitors/{id}/crawl` (Firecrawl) ·
+`POST /competitors/{id}/social/fetch` (ScrapeCreators) ·
 `POST /competitors/{id}/ads/fetch` (ScrapeCreators) ·
 `POST /competitors/{id}/ads-suggestion` (ScrapeCreators + LLM) ·
 `POST /scraper-keys/{provider}/test` (Firecrawl / ScrapeCreators)
 
 Falham alto, com mensagem dizendo de qual serviço dependem — em vez de
-devolver vazio e parecer que funcionaram. **As quatro dependem de chave que o
+devolver vazio e parecer que funcionaram. **As cinco dependem de chave que o
 dono ainda não forneceu**, não de código por escrever: a parte de IA já existe
 em `ia.py`.
 
-## O que já foi feito e saiu desta lista
-
-- **Node 22** instalado na VPS (`~/.local/node22`) — o app exige `>= 22.12`.
-- **`providers/api.ts`** escrito, com os 26 métodos; `src/lib/data/index.ts`
-  hoje alterna entre `mock` e `api`. O `providers/supabase.ts` continua no
-  disco mas **ninguém o importa** — é código morto, sai na faxina.
-- **nginx + certificado** em `concorrentes.imagohub.com.br`, com `/api/`
-  para a 8012 e `/` para o SSR na 8013.
-- **SWOT**, acima.
-
 ## O que falta para o produto rodar 100% aqui
 
-1. Rotas de **SEO** e **Social** na API — hoje não existe nenhuma, e as duas
-   telas ainda leem direto do Postgres do Supabase, que não resolve mais.
-2. Trocar `requireSupabaseAuth` (em `src/start.ts` e nos `server-fns/`) pelo
-   token local.
-3. Portar os **coletores** — `crawl-competitor`, `fetch-competitor-social`,
-   `fetch-competitor-ads` — e refazer em serviço a cadeia que os 4 gatilhos do
-   banco faziam por `pg_net`, extensão que **não existe** no banco novo.
-4. Faxina: apagar `supabase/`, `src/integrations/supabase/`,
-   `providers/supabase.ts`, `@supabase/supabase-js`, as `VITE_SUPABASE_*`, e
-   trocar o `vite.config.ts` pelo próprio (hoje é `@lovable.dev/vite-tanstack-config`).
-5. Revogar `EXECUTE` de PUBLIC em `get_llm_key` / `get_scraper_key`.
-6. Backup do banco e cópia da `CONCORRENTES_CRIPTO_CHAVE` fora da VPS — hoje
+1. **Chave Firecrawl e chave ScrapeCreators.** Sem elas, nenhum dado entra no
+   sistema — e sem dado, SWOT, SEO e Social respondem 409 corretamente, mas
+   respondem 409.
+2. Portar os coletores `crawl-competitor`, `fetch-competitor-social` e
+   `fetch-competitor-ads`, e refazer em serviço a cadeia que os 4 gatilhos do
+   banco faziam por `pg_net` — extensão que **não existe** no banco novo.
+   Hoje a cadeia está cortada: criar concorrente grava `crawl_status='failed'`
+   com uma mensagem que manda chamar `bootstrap-app-config`, edge function que
+   não existe mais.
+3. Agendamento dos dois "daily" (crawl e anúncios) como cron da VPS.
+4. Trocar o `vite.config.ts`, que hoje é `defineConfig()` de
+   `@lovable.dev/vite-tanstack-config` — última dependência de código da
+   Lovable. Está público no npm, então dá para reinstalar, mas o pipeline de
+   build é deles.
+5. Apagar `supabase/functions/` (13 funções) quando os coletores estiverem
+   portados.
+6. Revogar `EXECUTE` de PUBLIC em `get_llm_key` / `get_scraper_key`.
+7. Backup do banco e cópia da `CONCORRENTES_CRIPTO_CHAVE` fora da VPS — hoje
    é cópia única, e sem ela as chaves BYOK viram texto cifrado indecifrável.
+8. Decidir a FK de `social_snapshots` / `social_analyses` (armadilha 2, acima).

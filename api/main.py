@@ -728,3 +728,372 @@ def aceitar_convite(invite_id: uuid.UUID, a: AceitarConvite):
     )
     token, expira = auth.gerar_token(novo["id"], novo["email"])
     return {"token": token, "expiraEm": expira, "usuario": novo}
+
+
+# ------------------------------------------------------------------------ seo
+# Porta a edge function `analyze-seo-competitor`. O tool-calling que ela usava
+# para garantir a forma da resposta virou `responseSchema` do Gemini.
+SEO_SISTEMA = """Você é um especialista sênior em SEO técnico e de conteúdo, analisando o site de um concorrente.
+Responda SEMPRE em português do Brasil, em tom executivo, direto e acionável.
+Use APENAS as informações fornecidas (não invente dados de tráfego, backlinks ou métricas externas).
+Se a informação não estiver no markdown, diga claramente que não foi possível avaliar aquele aspecto."""
+
+SEO_ESQUEMA = {
+    "type": "OBJECT",
+    "required": ["score", "summary", "strengths", "weaknesses",
+                 "opportunities", "recommendations", "target_keywords"],
+    "properties": {
+        "score": {"type": "INTEGER", "description": "Nota de 0 a 100 da qualidade SEO geral."},
+        "summary": {"type": "STRING", "description": "Resumo executivo, 2 a 4 frases."},
+        "strengths": {"type": "ARRAY", "items": {"type": "STRING"}},
+        "weaknesses": {"type": "ARRAY", "items": {"type": "STRING"}},
+        "opportunities": {"type": "ARRAY", "items": {"type": "STRING"}},
+        "recommendations": {"type": "ARRAY", "items": {"type": "STRING"}},
+        "target_keywords": {
+            "type": "ARRAY",
+            "items": {
+                "type": "OBJECT",
+                "required": ["keyword", "intent", "rationale"],
+                "properties": {
+                    "keyword": {"type": "STRING"},
+                    "intent": {
+                        "type": "STRING",
+                        "enum": ["informacional", "navegacional",
+                                 "transacional", "comercial"],
+                    },
+                    "rationale": {"type": "STRING"},
+                },
+            },
+        },
+    },
+}
+
+
+def _lista_de_texto(valor, teto=6):
+    if not isinstance(valor, list):
+        return []
+    return [v[:400] for v in valor if isinstance(v, str) and v.strip()][:teto]
+
+
+@app.get("/competitors/{cid}/seo")
+def ver_seo(cid: uuid.UUID, u=Depends(auth.usuario_atual)):
+    """Devolve None quando ainda nao ha analise -- o front trata null, nao 404."""
+    return db.um(
+        "select * from public.seo_analyses where competitor_id = %s and user_id = %s "
+        "order by analyzed_at desc limit 1",
+        (str(cid), u["id"]),
+    )
+
+
+@app.post("/competitors/{cid}/seo", status_code=201)
+def analisar_seo(cid: uuid.UUID, u=Depends(auth.usuario_atual)):
+    comp = db.um(
+        "select id, name, url from public.competitors where id = %s and user_id = %s",
+        (str(cid), u["id"]),
+    )
+    if not comp:
+        raise HTTPException(404, "Concorrente nao encontrado.")
+
+    snap = db.um(
+        "select id, raw_text, structured_data, crawled_at from public.snapshots "
+        "where competitor_id = %s and user_id = %s order by crawled_at desc limit 1",
+        (str(cid), u["id"]),
+    )
+    if not snap:
+        raise HTTPException(
+            409,
+            "Faca um crawl antes de analisar o SEO -- sem o conteudo do site "
+            "nao ha o que avaliar.",
+        )
+
+    dominio = (comp["url"] or "").split("//")[-1].split("/")[0]
+    prompt = (
+        "Analise o SEO do site do concorrente abaixo a partir do markdown extraido.\n\n"
+        "# Concorrente\n- Nome: %s\n- Dominio: %s\n- URL analisada: %s\n\n"
+        "# Dados estruturados extraidos\n```json\n%s\n```\n\n"
+        "# Conteudo (markdown -- pode estar truncado)\n```markdown\n%s\n```\n\n"
+        "Avalie:\n"
+        "1. Clareza de proposta de valor / H1 / titulo\n"
+        "2. Densidade e relevancia das keywords presentes\n"
+        "3. Estrutura de conteudo (headings, CTAs, copy)\n"
+        "4. Sinais de intencao de busca atendidos\n"
+        "5. Oportunidades de SEO que o concorrente NAO esta cobrindo"
+        % (
+            comp["name"],
+            dominio,
+            comp["url"],
+            json.dumps(snap["structured_data"] or {}, ensure_ascii=False, indent=2)[:2000],
+            (snap["raw_text"] or "")[:12000],
+        )
+    )
+
+    bruto, modelo, _t = ia.gerar_json(
+        u["id"], SEO_SISTEMA, prompt, uso="swot", esquema=SEO_ESQUEMA
+    )
+    if not isinstance(bruto, dict):
+        raise HTTPException(502, "O modelo %s devolveu resposta invalida." % modelo)
+
+    nota = bruto.get("score")
+    nota = max(0, min(100, int(nota))) if isinstance(nota, (int, float)) else None
+    palavras = []
+    for k in (bruto.get("target_keywords") or [])[:10]:
+        if isinstance(k, dict) and isinstance(k.get("keyword"), str):
+            palavras.append({
+                "keyword": k["keyword"][:120],
+                "intent": k.get("intent") if k.get("intent") in (
+                    "informacional", "navegacional", "transacional", "comercial"
+                ) else "informacional",
+                "rationale": (k.get("rationale") or "")[:400],
+            })
+
+    campos = (
+        u["id"], str(cid), snap["id"], modelo, nota,
+        (bruto.get("summary") or "")[:2000],
+        json.dumps(_lista_de_texto(bruto.get("strengths"), 5), ensure_ascii=False),
+        json.dumps(_lista_de_texto(bruto.get("weaknesses"), 5), ensure_ascii=False),
+        json.dumps(_lista_de_texto(bruto.get("opportunities"), 5), ensure_ascii=False),
+        json.dumps(_lista_de_texto(bruto.get("recommendations"), 6), ensure_ascii=False),
+        json.dumps(palavras, ensure_ascii=False),
+        json.dumps({"domain": dominio, "url": comp["url"],
+                    "snapshot_crawled_at": snap["crawled_at"].isoformat()},
+                   ensure_ascii=False),
+    )
+
+    # Uma analise por concorrente: o front le com maybeSingle, que estoura se
+    # houver duas linhas. Nao ha unique no schema portado, entao o upsert e
+    # feito aqui -- update primeiro, insert so se nao existia.
+    linha = db.um(
+        "update public.seo_analyses set source_snapshot_id = %s, model = %s, "
+        "score = %s, summary = %s, strengths = %s, weaknesses = %s, "
+        "opportunities = %s, recommendations = %s, target_keywords = %s, "
+        "meta = %s, analyzed_at = now(), updated_at = now() "
+        "where competitor_id = %s and user_id = %s returning *",
+        campos[2:] + (str(cid), u["id"]),
+    )
+    if linha:
+        return linha
+    return db.um(
+        "insert into public.seo_analyses (user_id, competitor_id, source_snapshot_id, "
+        "model, score, summary, strengths, weaknesses, opportunities, "
+        "recommendations, target_keywords, meta) "
+        "values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) returning *",
+        campos,
+    )
+
+
+# --------------------------------------------------------------------- social
+SOCIAL_ESQUEMA = {
+    "type": "OBJECT",
+    "required": ["summary", "cadence", "format_mix", "themes",
+                 "engagement", "top_posts", "insights"],
+    "properties": {
+        "summary": {"type": "STRING", "description": "1 a 2 frases resumindo a estrategia."},
+        "cadence": {
+            "type": "OBJECT",
+            "required": ["posts_per_week", "best_weekday", "notes"],
+            "properties": {
+                "posts_per_week": {"type": "NUMBER"},
+                "best_weekday": {"type": "STRING"},
+                "notes": {"type": "STRING"},
+            },
+        },
+        "format_mix": {
+            "type": "OBJECT",
+            "required": ["reel_pct", "image_pct", "carousel_pct"],
+            "properties": {
+                "reel_pct": {"type": "NUMBER"},
+                "image_pct": {"type": "NUMBER"},
+                "carousel_pct": {"type": "NUMBER"},
+            },
+        },
+        "themes": {
+            "type": "ARRAY",
+            "items": {
+                "type": "OBJECT",
+                "required": ["label", "weight"],
+                "properties": {
+                    "label": {"type": "STRING"},
+                    "weight": {"type": "NUMBER", "description": "0 a 1"},
+                },
+            },
+        },
+        "engagement": {
+            "type": "OBJECT",
+            "required": ["avg_likes", "avg_comments", "engagement_rate_pct"],
+            "properties": {
+                "avg_likes": {"type": "NUMBER"},
+                "avg_comments": {"type": "NUMBER"},
+                "engagement_rate_pct": {"type": "NUMBER"},
+            },
+        },
+        "top_posts": {
+            "type": "ARRAY",
+            "items": {
+                "type": "OBJECT",
+                "required": ["shortcode", "permalink", "reason"],
+                "properties": {
+                    "shortcode": {"type": "STRING"},
+                    "permalink": {"type": "STRING"},
+                    "reason": {"type": "STRING"},
+                },
+            },
+        },
+        "insights": {"type": "ARRAY", "items": {"type": "STRING"}},
+    },
+}
+
+
+class HandleInstagram(BaseModel):
+    handle: str | None = None
+
+
+@app.get("/competitors/{cid}/social/snapshots")
+def listar_social(
+    cid: uuid.UUID,
+    platform: str = "instagram",
+    limit: int = 30,
+    u=Depends(auth.usuario_atual),
+):
+    return db.varios(
+        "select * from public.social_snapshots where competitor_id = %s "
+        "and user_id = %s and platform = %s order by fetched_at desc limit %s",
+        (str(cid), u["id"], platform, min(limit, 100)),
+    )
+
+
+@app.get("/competitors/{cid}/social/analysis")
+def ver_social(cid: uuid.UUID, platform: str = "instagram",
+               u=Depends(auth.usuario_atual)):
+    return db.um(
+        "select * from public.social_analyses where competitor_id = %s "
+        "and user_id = %s and platform = %s order by analyzed_at desc limit 1",
+        (str(cid), u["id"], platform),
+    )
+
+
+@app.post("/competitors/{cid}/social/fetch", status_code=501)
+def buscar_social(cid: uuid.UUID, platform: str = "instagram",
+                  u=Depends(auth.usuario_atual)):
+    raise HTTPException(501, FALTA_TERCEIRO.format(servico="ScrapeCreators"))
+
+
+@app.post("/competitors/{cid}/social/analyze", status_code=201)
+def analisar_social(cid: uuid.UUID, platform: str = "instagram",
+                    u=Depends(auth.usuario_atual)):
+    comp = db.um(
+        "select id, name, url from public.competitors where id = %s and user_id = %s",
+        (str(cid), u["id"]),
+    )
+    if not comp:
+        raise HTTPException(404, "Concorrente nao encontrado.")
+
+    snap = db.um(
+        "select * from public.social_snapshots where competitor_id = %s "
+        "and user_id = %s and platform = %s order by fetched_at desc limit 1",
+        (str(cid), u["id"], platform),
+    )
+    if not snap:
+        raise HTTPException(
+            409,
+            "Nenhum perfil coletado ainda para este concorrente. Busque o "
+            "perfil antes de analisar.",
+        )
+
+    posts = snap["recent_posts"] if isinstance(snap["recent_posts"], list) else []
+    compactos = [
+        {
+            "shortcode": p.get("shortcode"),
+            "type": p.get("type"),
+            "taken_at": p.get("taken_at"),
+            "likes": p.get("like_count"),
+            "comments": p.get("comment_count"),
+            "views": p.get("video_view_count"),
+            "caption": (p.get("caption") or "")[:400],
+            "permalink": p.get("permalink"),
+        }
+        for p in posts
+        if isinstance(p, dict)
+    ]
+    seguidores = snap["followers"] or 0
+
+    prompt = (
+        "Voce analisa a estrategia publica de Instagram de um concorrente.\n\n"
+        "Concorrente: %s (%s)\nHandle: @%s\nFollowers: %s\n"
+        "Posts no perfil: %s\nBio: %s\n\n"
+        "Ultimos %d posts (JSON):\n%s\n\n"
+        "Tarefa: produza analise objetiva e acionavel em pt-BR. Use base de "
+        "followers=%s para calcular taxas. Inclua frequencia semanal (estime "
+        "pelos timestamps), mix de formatos (Reel/Foto/Carrossel %%), 3 a 5 "
+        "temas dominantes, engajamento medio ((likes+comments)/followers), "
+        "top 3 posts com permalink, e 3 insights acionaveis para nossa marca "
+        "competir."
+        % (
+            comp["name"], comp["url"], snap["handle"], seguidores,
+            snap["posts_count"] if snap["posts_count"] is not None else "n/a",
+            snap["bio"] or "(vazia)",
+            len(compactos),
+            json.dumps(compactos, ensure_ascii=False, indent=2)[:12000],
+            seguidores,
+        )
+    )
+
+    bruto, modelo, _t = ia.gerar_json(
+        u["id"],
+        "Voce e um analista de redes sociais. Responda sempre em portugues do Brasil.",
+        prompt,
+        uso="swot",
+        esquema=SOCIAL_ESQUEMA,
+    )
+    if not isinstance(bruto, dict):
+        raise HTTPException(502, "O modelo %s devolveu resposta invalida." % modelo)
+
+    return db.um(
+        "insert into public.social_analyses (user_id, competitor_id, platform, "
+        "source_snapshot_id, model, summary, cadence, format_mix, themes, "
+        "engagement, top_posts, insights) "
+        "values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) returning *",
+        (
+            u["id"], str(cid), platform, snap["id"], modelo,
+            (bruto.get("summary") or "")[:2000],
+            json.dumps(bruto.get("cadence") or {}, ensure_ascii=False),
+            json.dumps(bruto.get("format_mix") or {}, ensure_ascii=False),
+            json.dumps(bruto.get("themes") or [], ensure_ascii=False),
+            json.dumps(bruto.get("engagement") or {}, ensure_ascii=False),
+            json.dumps(bruto.get("top_posts") or [], ensure_ascii=False),
+            json.dumps(_lista_de_texto(bruto.get("insights"), 5), ensure_ascii=False),
+        ),
+    )
+
+
+@app.get("/competitors/{cid}/instagram-handle")
+def ver_handle_instagram(cid: uuid.UUID, u=Depends(auth.usuario_atual)):
+    linha = db.um(
+        "select instagram_handle, instagram_handle_suggestion, "
+        "last_instagram_fetched_at from public.competitors "
+        "where id = %s and user_id = %s",
+        (str(cid), u["id"]),
+    )
+    if not linha:
+        raise HTTPException(404, "Concorrente nao encontrado.")
+    return linha
+
+
+@app.patch("/competitors/{cid}/instagram-handle", status_code=204)
+def trocar_handle_instagram(cid: uuid.UUID, h: HandleInstagram,
+                            u=Depends(auth.usuario_atual)):
+    """A limpeza do handle mora aqui, nao no front.
+
+    O client fazia trim, tirava o @, cortava querystring e barra final. Um
+    consumidor futuro da API nao pode depender de cada front repetir isso --
+    mesmo motivo da normalizacao de URL no commit de 01/09.
+    """
+    limpo = h.handle
+    if limpo:
+        limpo = limpo.strip().lstrip("@").split("?")[0].rstrip("/").lower() or None
+    n = db.executar(
+        "update public.competitors set instagram_handle = %s "
+        "where id = %s and user_id = %s",
+        (limpo, str(cid), u["id"]),
+    )
+    if not n:
+        raise HTTPException(404, "Concorrente nao encontrado.")

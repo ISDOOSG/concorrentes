@@ -1,4 +1,10 @@
-import { supabase } from "@/integrations/supabase/client";
+// Aba Social -- fala com a API propria.
+//
+// Antes lia social_snapshots/social_analyses direto no Postgres da
+// Supabase e disparava as edge functions fetch-competitor-social e
+// analyze-social-ig. O projeto da Lovable nao existe mais; agora e /api.
+// Os adaptadores abaixo nao mudaram: a API devolve as mesmas colunas.
+import { ApiError, apiFetch } from "@/lib/api-client";
 import type {
   FetchSocialResult,
   SocialAnalysis,
@@ -86,17 +92,10 @@ export const socialApi = {
     platform: SocialPlatform = "instagram",
     limit = 30,
   ): Promise<SocialSnapshot[]> {
-    const { data, error } = await supabase
-      .from("social_snapshots")
-      .select(
-        "id, competitor_id, platform, handle, fetched_at, fetched_date, followers, following, posts_count, is_verified, is_business, bio, external_url, category, profile_pic_url, recent_posts",
-      )
-      .eq("competitor_id", competitorId)
-      .eq("platform", platform)
-      .order("fetched_at", { ascending: false })
-      .limit(limit);
-    if (error) throw error;
-    return ((data as SnapshotRow[] | null) ?? []).map(rowToSnapshot);
+    const rows = await apiFetch<SnapshotRow[]>(
+      `/competitors/${competitorId}/social/snapshots?platform=${platform}&limit=${limit}`,
+    );
+    return (rows ?? []).map(rowToSnapshot);
   },
 
   async getLatestSnapshot(
@@ -111,83 +110,72 @@ export const socialApi = {
     competitorId: string,
     platform: SocialPlatform = "instagram",
   ): Promise<SocialAnalysis | null> {
-    const { data, error } = await supabase
-      .from("social_analyses")
-      .select(
-        "id, competitor_id, platform, source_snapshot_id, model, summary, cadence, format_mix, themes, engagement, top_posts, insights, analyzed_at",
-      )
-      .eq("competitor_id", competitorId)
-      .eq("platform", platform)
-      .order("analyzed_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
-    if (error) throw error;
-    return data ? rowToAnalysis(data as AnalysisRow) : null;
+    // A API devolve null (200) quando ainda nao ha analise -- nao 404.
+    const row = await apiFetch<AnalysisRow | null>(
+      `/competitors/${competitorId}/social/analysis?platform=${platform}`,
+    );
+    return row ? rowToAnalysis(row) : null;
   },
 
   async triggerFetch(
     competitorId: string,
     platform: SocialPlatform = "instagram",
   ): Promise<FetchSocialResult> {
-    const { data, error } = await supabase.functions.invoke(
-      "fetch-competitor-social",
-      { body: { competitor_id: competitorId, platform } },
-    );
-    if (error) {
-      const status = (error as { context?: { status?: number } }).context?.status ?? 500;
-      const message =
-        (data as { error?: string } | null)?.error ?? error.message ?? "Falha ao buscar perfil";
-      return { ok: false, error: message, status };
+    // Continua 501 ate a chave do ScrapeCreators existir. O erro vem com a
+    // mensagem da API, que diz de qual servico depende.
+    try {
+      return await apiFetch<FetchSocialResult>(
+        `/competitors/${competitorId}/social/fetch?platform=${platform}`,
+        { method: "POST" },
+      );
+    } catch (e) {
+      const err = e as ApiError;
+      return { ok: false, error: err.message ?? "Falha ao buscar perfil", status: err.status ?? 500 };
     }
-    return data as FetchSocialResult;
   },
 
   async triggerAnalyze(
     competitorId: string,
     platform: SocialPlatform = "instagram",
   ): Promise<{ ok: true; analysisId: string | null } | { ok: false; error: string; status?: number }> {
-    const { data, error } = await supabase.functions.invoke(
-      "analyze-social-ig",
-      { body: { competitor_id: competitorId, platform } },
-    );
-    if (error) {
-      const status = (error as { context?: { status?: number } }).context?.status ?? 500;
-      const message =
-        (data as { error?: string } | null)?.error ?? error.message ?? "Falha ao analisar perfil";
-      return { ok: false, error: message, status };
+    try {
+      const row = await apiFetch<AnalysisRow>(
+        `/competitors/${competitorId}/social/analyze?platform=${platform}`,
+        { method: "POST" },
+      );
+      return { ok: true, analysisId: row?.id ?? null };
+    } catch (e) {
+      const err = e as ApiError;
+      return { ok: false, error: err.message ?? "Falha ao analisar perfil", status: err.status };
     }
-    const res = data as { ok?: boolean; analysis_id?: string | null; error?: string };
-    if (res?.ok) return { ok: true, analysisId: res.analysis_id ?? null };
-    return { ok: false, error: res?.error ?? "Resposta inválida da análise" };
   },
 
   async setInstagramHandle(competitorId: string, handle: string | null): Promise<void> {
-    const clean = handle ? handle.trim().replace(/^@/, "").split("?")[0].replace(/\/+$/, "").toLowerCase() : null;
-    const { error } = await supabase
-      .from("competitors")
-      .update({ instagram_handle: clean } as never)
-      .eq("id", competitorId);
-    if (error) throw error;
+    // A limpeza do handle (trim, @, querystring, barra final) passou a ser
+    // feita no servidor -- um consumidor futuro da API nao pode depender de
+    // cada front repetir a regra.
+    await apiFetch<void>(`/competitors/${competitorId}/instagram-handle`, {
+      method: "PATCH",
+      body: JSON.stringify({ handle }),
+    });
   },
 
   async getInstagramHandles(
     competitorId: string,
   ): Promise<{ handle: string | null; suggestion: string | null; lastFetchedAt: string | null }> {
-    const { data, error } = await supabase
-      .from("competitors")
-      .select("instagram_handle, instagram_handle_suggestion, last_instagram_fetched_at")
-      .eq("id", competitorId)
-      .maybeSingle();
-    if (error || !data) return { handle: null, suggestion: null, lastFetchedAt: null };
-    const row = data as unknown as {
-      instagram_handle: string | null;
-      instagram_handle_suggestion: string | null;
-      last_instagram_fetched_at: string | null;
-    };
-    return {
-      handle: row.instagram_handle,
-      suggestion: row.instagram_handle_suggestion,
-      lastFetchedAt: row.last_instagram_fetched_at,
-    };
+    try {
+      const row = await apiFetch<{
+        instagram_handle: string | null;
+        instagram_handle_suggestion: string | null;
+        last_instagram_fetched_at: string | null;
+      }>(`/competitors/${competitorId}/instagram-handle`);
+      return {
+        handle: row.instagram_handle,
+        suggestion: row.instagram_handle_suggestion,
+        lastFetchedAt: row.last_instagram_fetched_at,
+      };
+    } catch {
+      return { handle: null, suggestion: null, lastFetchedAt: null };
+    }
   },
 };

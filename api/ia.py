@@ -114,7 +114,7 @@ def _traduzir(codigo, detalhe, modelo):
     return "A API do Gemini respondeu HTTP %s: %s" % (codigo, detalhe or "sem detalhe")
 
 
-def _chamar(modelo, chave, prompt_sistema, prompt_usuario, json_estrito):
+def _chamar(modelo, chave, prompt_sistema, prompt_usuario, json_estrito, esquema=None):
     corpo = {
         "contents": [{"parts": [{"text": prompt_usuario}]}],
         "systemInstruction": {"parts": [{"text": prompt_sistema}]},
@@ -122,6 +122,11 @@ def _chamar(modelo, chave, prompt_sistema, prompt_usuario, json_estrito):
     }
     if json_estrito:
         corpo["generationConfig"]["responseMimeType"] = "application/json"
+    if esquema:
+        # `responseSchema` faz o Google validar a forma antes de devolver --
+        # e a substituicao do tool-calling que as edge functions usavam para
+        # garantir os campos. Sem ele, campo faltando so aparece no parse.
+        corpo["generationConfig"]["responseSchema"] = esquema
 
     req = urllib.request.Request(
         "%s/%s:generateContent" % (BASE, modelo),
@@ -164,7 +169,7 @@ def _chamar(modelo, chave, prompt_sistema, prompt_usuario, json_estrito):
     return texto, resposta.get("usageMetadata") or {}
 
 
-def _com_queda(modelo, chave, prompt_sistema, prompt_usuario, json_estrito):
+def _com_queda(modelo, chave, prompt_sistema, prompt_usuario, json_estrito, esquema=None):
     """Tenta o modelo escolhido; se ele estiver congestionado, cai no leve.
 
     O tier gratuito derruba o flash mais novo em horario de pico -- MEDIDO em
@@ -173,19 +178,25 @@ def _com_queda(modelo, chave, prompt_sistema, prompt_usuario, json_estrito):
     e esse nome que vai para a coluna `llm_model`.
     """
     try:
-        texto, tokens = _chamar(modelo, chave, prompt_sistema, prompt_usuario, json_estrito)
+        texto, tokens = _chamar(
+            modelo, chave, prompt_sistema, prompt_usuario, json_estrito, esquema
+        )
         return texto, tokens, modelo
     except ErroIA as e:
         if "congestionado" not in e.mensagem or modelo == MODELO_LEVE:
             raise
-        texto, tokens = _chamar(MODELO_LEVE, chave, prompt_sistema, prompt_usuario, json_estrito)
+        texto, tokens = _chamar(
+            MODELO_LEVE, chave, prompt_sistema, prompt_usuario, json_estrito, esquema
+        )
         return texto, tokens, MODELO_LEVE
 
 
-def gerar_json(user_id, prompt_sistema, prompt_usuario, uso="swot"):
+def gerar_json(user_id, prompt_sistema, prompt_usuario, uso="swot", esquema=None):
     """Chama o modelo e devolve (dado, modelo_que_rodou, uso_de_tokens)."""
     _provider, modelo, chave = resolver(user_id, uso)
-    texto, tokens, modelo = _com_queda(modelo, chave, prompt_sistema, prompt_usuario, True)
+    texto, tokens, modelo = _com_queda(
+        modelo, chave, prompt_sistema, prompt_usuario, True, esquema
+    )
 
     limpo = texto.strip()
     if limpo.startswith("```"):
