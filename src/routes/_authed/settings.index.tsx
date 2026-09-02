@@ -25,6 +25,13 @@ export const Route = createFileRoute("/_authed/settings/")({
   component: SettingsPage,
 });
 
+// 🚨 SÓ O GEMINI ESTÁ IMPLEMENTADO no serviço (ver api/ia.py). Esta lista
+// oferecia quatro provedores; escolher Anthropic ou OpenAI fazia SWOT, SEO e
+// Social responderem 501, e `lovable` era o gateway que morreu com o
+// laboratório. Oferecer opção que não funciona é pior que não oferecer.
+//
+// Quando outro provedor for portado, ele volta aqui E no `LLM_MODELS` —
+// nunca só num dos dois.
 const PROVIDERS: Array<{
   id: LLMProviderId;
   name: string;
@@ -32,31 +39,10 @@ const PROVIDERS: Array<{
   byok: boolean;
 }> = [
   {
-    id: "lovable",
-    name: "Lovable AI",
-    description:
-      "Default. Cobrança via Lovable Cloud. Sem configuração — funciona out-of-the-box.",
-    byok: false,
-  },
-  {
-    id: "anthropic",
-    name: "Anthropic Claude",
-    description:
-      "Haiku 4.5 (classificação) e Sonnet 4.6 (SWOT). Você cobra direto da Anthropic.",
-    byok: true,
-  },
-  {
-    id: "openai",
-    name: "OpenAI",
-    description:
-      "GPT-4o-mini (classificação) e GPT-4o (SWOT). Sua conta OpenAI.",
-    byok: true,
-  },
-  {
     id: "gemini",
     name: "Google Gemini",
     description:
-      "Gemini 2.5 Flash (classificação) e Pro (SWOT). Sua conta Google AI.",
+      "Gemini 3.5 Flash para análise e Flash Lite para volume. Usa a chave do projeto; cadastre a sua para cobrar na sua conta Google AI.",
     byok: true,
   },
 ];

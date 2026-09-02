@@ -1,110 +1,42 @@
 import type { LLMModelOption, LLMProviderId, LLMUseCase } from "./types";
 
-// Catalog of selectable models per provider, per use case.
-// Default models (first item of each list) are used when the user hasn't picked one.
-export const LLM_MODELS: Record<LLMProviderId, LLMModelOption[]> = {
-  lovable: [
-    {
-      id: "google/gemini-2.5-flash",
-      label: "Gemini 2.5 Flash",
-      description: "Equilíbrio entre custo, velocidade e qualidade. Default.",
-      recommendedFor: ["classification", "swot"],
-    },
-    {
-      id: "google/gemini-2.5-flash-lite",
-      label: "Gemini 2.5 Flash Lite",
-      description: "Mais rápido e barato. Ideal para classificação em massa.",
-      recommendedFor: ["classification"],
-    },
-    {
-      id: "google/gemini-2.5-pro",
-      label: "Gemini 2.5 Pro",
-      description: "Maior qualidade de raciocínio. Bom para SWOT detalhado.",
-      recommendedFor: ["swot"],
-    },
-    {
-      id: "openai/gpt-5-mini",
-      label: "GPT-5 Mini",
-      description: "Boa relação custo/qualidade da OpenAI via Lovable.",
-      recommendedFor: ["classification", "swot"],
-    },
-    {
-      id: "openai/gpt-5",
-      label: "GPT-5",
-      description: "Top de linha OpenAI. SWOT premium.",
-      recommendedFor: ["swot"],
-    },
-  ],
-  anthropic: [
-    {
-      id: "claude-haiku-4-5",
-      label: "Claude Haiku 4.5",
-      description: "Rápido e barato. Ideal para classificação.",
-      recommendedFor: ["classification"],
-    },
-    {
-      id: "claude-sonnet-4-6",
-      label: "Claude Sonnet 4.6",
-      description: "Equilíbrio. Default para SWOT.",
-      recommendedFor: ["swot"],
-    },
-    {
-      id: "claude-opus-4-1",
-      label: "Claude Opus 4.1",
-      description: "Máxima qualidade. Custo mais alto.",
-      recommendedFor: ["swot"],
-    },
-  ],
-  openai: [
-    {
-      id: "gpt-4o-mini",
-      label: "GPT-4o Mini",
-      description: "Rápido e barato. Default para classificação.",
-      recommendedFor: ["classification"],
-    },
-    {
-      id: "gpt-4o",
-      label: "GPT-4o",
-      description: "Equilíbrio. Default para SWOT.",
-      recommendedFor: ["swot"],
-    },
-    {
-      id: "gpt-4.1",
-      label: "GPT-4.1",
-      description: "Raciocínio aprimorado para análises mais densas.",
-      recommendedFor: ["swot"],
-    },
-    {
-      id: "o4-mini",
-      label: "o4-mini",
-      description: "Modelo de raciocínio rápido.",
-      recommendedFor: ["swot"],
-    },
-  ],
+// Catálogo de modelos escolhíveis, por provedor e por uso.
+// O primeiro recomendado da lista é o default quando o usuário não escolheu.
+//
+// 🚨 SÓ O GEMINI EXISTE, E OS MODELOS SÃO MEDIDOS, não copiados do catálogo.
+//
+// Esta tela oferecia quatro provedores — `lovable`, `anthropic`, `openai` e
+// `gemini` — e o serviço implementa um. Escolher Anthropic ou OpenAI fazia
+// SWOT, SEO e Social passarem a responder 501, e o `lovable` era o gateway
+// que morreu junto com o laboratório.
+//
+// Pior: a lista antiga era de `gemini-2.5-*`. Em 2026-09-02, contra a chave
+// do projeto, os três responderam "no longer available to new users" — só
+// funcionavam pelo acesso legado do gateway da Lovable. Escolher um deles
+// gravava um modelo morto em `user_llm_settings.model_swot`, que sobrescreve
+// o default que funciona: a tela desligava a IA em silêncio.
+//
+// Os dois abaixo foram exercitados contra a API do Google e responderam. A
+// tabela da medição está em docs/07_API_Propria.md.
+//
+// O tipo continua sendo `Partial`: `user_llm_settings` de quem veio do
+// laboratório ainda tem `provider = 'lovable'` gravado, e o `ia.py` trata
+// isso caindo no Gemini do projeto em vez de falhar. Aqui, um provedor sem
+// modelos simplesmente não oferece nenhum.
+export const LLM_MODELS: Partial<Record<LLMProviderId, LLMModelOption[]>> = {
   gemini: [
     {
-      id: "gemini-2.5-flash",
-      label: "Gemini 2.5 Flash",
-      description: "Default para classificação. Rápido e barato.",
+      id: "gemini-3.5-flash",
+      label: "Gemini 3.5 Flash",
+      description: "Equilíbrio entre custo e qualidade. Default para análise.",
+      recommendedFor: ["classification", "swot"],
+    },
+    {
+      id: "gemini-flash-lite-latest",
+      label: "Gemini Flash Lite",
+      description:
+        "Mais rápido e com fila menor. É para onde o serviço cai sozinho quando o modelo de análise vem congestionado.",
       recommendedFor: ["classification"],
-    },
-    {
-      id: "gemini-2.5-flash-lite",
-      label: "Gemini 2.5 Flash Lite",
-      description: "Ainda mais rápido. Ótimo para grandes volumes.",
-      recommendedFor: ["classification"],
-    },
-    {
-      id: "gemini-2.5-pro",
-      label: "Gemini 2.5 Pro",
-      description: "Default para SWOT. Raciocínio profundo.",
-      recommendedFor: ["swot"],
-    },
-    {
-      id: "gemini-3-pro-preview",
-      label: "Gemini 3 Pro (preview)",
-      description: "Última geração em preview. Use com cautela.",
-      recommendedFor: ["swot"],
     },
   ],
 };
