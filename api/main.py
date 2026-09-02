@@ -17,6 +17,7 @@ ScrapeCreators, LLM). Falham alto e dizem o que falta, em vez de devolver
 vazio e parecer que funcionaram.
 """
 import json
+import re
 import uuid
 
 from fastapi import Depends, FastAPI, HTTPException
@@ -630,10 +631,118 @@ def ver_sugestao_ads(cid: uuid.UUID, u=Depends(auth.usuario_atual)):
     )
 
 
-@app.post("/competitors/{cid}/ads-suggestion", status_code=501)
+SUGESTAO_SISTEMA = ("Você identifica contas oficiais de marcas em plataformas "
+                    "de anúncios. Não invente: sem certeza alta, devolva null e "
+                    "confiança baixa.")
+
+SUGESTAO_ESQUEMA = {
+    "type": "OBJECT",
+    "required": ["facebook_page_id", "google_advertiser_id", "confidence",
+                 "reasoning"],
+    "properties": {
+        "facebook_page_id": {"type": "STRING", "nullable": True},
+        "google_advertiser_id": {"type": "STRING", "nullable": True},
+        "confidence": {
+            "type": "OBJECT",
+            "required": ["meta", "google"],
+            "properties": {"meta": {"type": "NUMBER"},
+                           "google": {"type": "NUMBER"}},
+        },
+        "reasoning": {"type": "STRING"},
+    },
+}
+
+RE_GOOGLE_ID = re.compile(r"^AR\d+$")
+RE_FB_ID = re.compile(r"^[\w.\-]+$")
+
+
+@app.post("/competitors/{cid}/ads-suggestion", status_code=201)
 def gerar_sugestao_ads(cid: uuid.UUID, u=Depends(auth.usuario_atual)):
-    raise HTTPException(
-        501, FALTA_TERCEIRO.format(servico="ScrapeCreators + provedor de LLM")
+    """Porta a edge function `suggest-ads-links`.
+
+    Junta candidatos de duas origens -- o markdown do último crawl e a busca
+    nos dois acervos de anúncios -- e deixa o modelo arbitrar. O modelo NÃO
+    inventa id: o que ele devolver é conferido contra o formato esperado antes
+    de virar sugestão, e id fora do formato é descartado.
+
+    ⚠️ Custa 2 créditos de ScrapeCreators por chamada (uma busca em cada
+    acervo). É a rota mais cara do serviço.
+    """
+    comp = db.um(
+        "select id, name, url from public.competitors where id = %s and user_id = %s",
+        (str(cid), u["id"]),
+    )
+    if not comp:
+        raise HTTPException(404, "Concorrente nao encontrado.")
+
+    snap = db.um(
+        "select raw_text from public.snapshots where competitor_id = %s "
+        "and user_id = %s order by crawled_at desc limit 1",
+        (str(cid), u["id"]),
+    )
+    if not snap:
+        raise HTTPException(
+            409,
+            "Faca um crawl antes: a sugestao parte dos links que o site do "
+            "concorrente publica.",
+        )
+
+    do_site = coletores.candidatos_de_ads(snap["raw_text"] or "")
+    da_busca = coletores.buscar_anunciantes(u["id"], comp["name"])
+    dominio = (comp["url"] or "").split("//")[-1].split("/")[0]
+
+    prompt = (
+        "Identifique as contas oficiais deste concorrente.\n\n"
+        "Concorrente:\n- Nome: %s\n- URL: %s\n- Dominio: %s\n\n"
+        "Candidatos achados no site:\n"
+        "- Facebook: %s\n- Instagram (so para inferir o Facebook): %s\n"
+        "- Google Advertiser: %s\n\n"
+        "Candidatos achados na busca dos acervos de anuncio:\n"
+        "- Facebook (top 5): %s\n- Google (top 5): %s\n\n"
+        "Devolva o id oficial de cada plataforma, ou null quando nao houver "
+        "certeza alta. A confianca vai de 0 a 1."
+        % (comp["name"], comp["url"], dominio,
+           json.dumps(do_site["fb"], ensure_ascii=False),
+           json.dumps(do_site["ig"], ensure_ascii=False),
+           json.dumps(do_site["google"], ensure_ascii=False),
+           json.dumps(da_busca["fb"], ensure_ascii=False),
+           json.dumps(da_busca["google"], ensure_ascii=False))
+    )
+
+    bruto, modelo, _t = ia.gerar_json(
+        u["id"], SUGESTAO_SISTEMA, prompt, uso="classification",
+        esquema=SUGESTAO_ESQUEMA,
+    )
+    if not isinstance(bruto, dict):
+        raise HTTPException(502, "O modelo %s devolveu resposta invalida." % modelo)
+
+    # O modelo pode devolver um id plausivel e errado. O formato e o unico
+    # filtro barato que existe: advertiser do Google e sempre ARnnn.
+    fb = bruto.get("facebook_page_id")
+    fb = fb if isinstance(fb, str) and RE_FB_ID.match(fb) else None
+    gg = bruto.get("google_advertiser_id")
+    gg = gg if isinstance(gg, str) and RE_GOOGLE_ID.match(gg) else None
+
+    conf = bruto.get("confidence") if isinstance(bruto.get("confidence"), dict) else {}
+    def _fatia(v):
+        try:
+            return max(0.0, min(1.0, float(v)))
+        except (TypeError, ValueError):
+            return 0.0
+    confianca = {"meta": _fatia(conf.get("meta")) if fb else 0.0,
+                 "google": _fatia(conf.get("google")) if gg else 0.0}
+    razao = (bruto.get("reasoning") or "")[:1000]
+    if not fb and not gg:
+        razao = razao or "Nenhum candidato com certeza suficiente."
+
+    return db.um(
+        "update public.competitors set facebook_page_suggestion = %s, "
+        "google_advertiser_suggestion = %s, ads_link_confidence = %s, "
+        "ads_link_reasoning = %s, ads_link_suggested_at = now() "
+        "where id = %s and user_id = %s "
+        "returning facebook_page_suggestion, google_advertiser_suggestion, "
+        "ads_link_confidence, ads_link_reasoning, ads_link_suggested_at",
+        (fb, gg, json.dumps(confianca), razao, str(cid), u["id"]),
     )
 
 

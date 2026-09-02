@@ -351,3 +351,91 @@ def testar_chave(user_id, provider):
         return {"ok": True, "provider": provider,
                 "detalhe": "creditos restantes: %s" % resp.get("credits_remaining")}
     raise ErroExterno("Provedor '%s' nao reconhecido." % provider, status=400)
+
+
+# ------------------------------------------------- candidatos de anuncio
+# Porta a parte determinista de `suggest-ads-links`: varrer o markdown do site
+# atras de perfis oficiais. As listas de bloqueio existem porque um site
+# qualquer linka facebook.com/sharer e instagram.com/p o tempo todo -- sem
+# elas, o "candidato" mais frequente seria o botao de compartilhar.
+FB_BLOQUEADOS = {
+    "sharer", "tr", "plugins", "dialog", "share", "intent", "watch", "events",
+    "groups", "marketplace", "help", "policies", "business", "policy.php",
+    "login", "login.php", "privacy", "terms", "ads",
+}
+IG_BLOQUEADOS = {
+    "p", "reel", "reels", "explore", "stories", "tv", "accounts", "about",
+    "developer", "directory", "legal", "privacy", "terms", "help", "press",
+    "api",
+}
+RE_FB = re.compile(r"facebook\.com/([\w.\-]+)", re.I)
+RE_IG = re.compile(r"instagram\.com/([\w.\-]+)", re.I)
+RE_GOOGLE = re.compile(r"adstransparency\.google\.com/advertiser/(AR\d+)", re.I)
+
+
+def _limpar(bruto):
+    return (bruto or "").rstrip("/").split("?")[0]
+
+
+def _unicos(seq, teto=5):
+    vistos, saida = set(), []
+    for x in seq:
+        if x and x not in vistos:
+            vistos.add(x)
+            saida.append(x)
+        if len(saida) >= teto:
+            break
+    return saida
+
+
+def candidatos_de_ads(markdown):
+    """{fb, ig, google} a partir do markdown do site do concorrente."""
+    fb, ig, google = [], [], []
+    for m in RE_FB.finditer(markdown or ""):
+        u = _limpar(m.group(1))
+        if u and not u.endswith(".php") and u.lower() not in FB_BLOQUEADOS:
+            fb.append(u)
+    for m in RE_IG.finditer(markdown or ""):
+        u = _limpar(m.group(1))
+        if u and u.lower() not in IG_BLOQUEADOS:
+            ig.append(u)
+    for m in RE_GOOGLE.finditer(markdown or ""):
+        google.append(m.group(1))
+    return {"fb": _unicos(fb), "ig": _unicos(ig), "google": _unicos(google)}
+
+
+def buscar_anunciantes(user_id, nome):
+    """Top 5 de cada acervo para o nome do concorrente. 2 creditos por chamada.
+
+    Falha de um lado nao derruba o outro: a sugestao ainda vale com metade dos
+    candidatos, e o modelo recebe listas vazias sabendo que estao vazias.
+    """
+    k = chave(user_id, "scrapecreators")
+    q = urllib.parse.quote(nome or "")
+    saida = {"fb": [], "google": []}
+    try:
+        r = _pedir("https://api.scrapecreators.com/v1/facebook/adLibrary/"
+                   "search/companies?query=%s&limit=5" % q,
+                   {"x-api-key": k}, segundos=30)
+        itens = r.get("searchResults") or r.get("results") or r.get("companies") or []
+        saida["fb"] = [
+            {"name": i.get("name"), "id": str(i.get("page_id") or i.get("id") or ""),
+             "followers_count": i.get("likes") or i.get("followers_count")}
+            for i in itens[:5] if isinstance(i, dict)
+        ]
+    except ErroExterno:
+        pass
+    try:
+        r = _pedir("https://api.scrapecreators.com/v1/google/adLibrary/"
+                   "advertisers/search?query=%s&limit=5" % q,
+                   {"x-api-key": k}, segundos=30)
+        itens = r.get("results") or r.get("advertisers") or r.get("data") or []
+        saida["google"] = [
+            {"advertiser_name": i.get("advertiser_name") or i.get("name"),
+             "advertiser_id": i.get("advertiser_id") or i.get("id"),
+             "country": i.get("country")}
+            for i in itens[:5] if isinstance(i, dict)
+        ]
+    except ErroExterno:
+        pass
+    return saida
