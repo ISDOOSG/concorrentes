@@ -572,26 +572,50 @@ def listar_ads(cid: uuid.UUID, u=Depends(auth.usuario_atual)):
 
 @app.post("/competitors/{cid}/ads/fetch", status_code=201)
 def buscar_ads(cid: uuid.UUID, u=Depends(auth.usuario_atual)):
-    """Porta a parte Meta da edge function `fetch-competitor-ads`.
+    """Porta a edge function `fetch-competitor-ads`, os dois acervos.
 
-    Google Ads ainda nao: depende de `google_advertiser_id`, que so e
-    preenchido pela sugestao por IA (`suggest-ads-links`), ainda nao portada.
+    A parte Google foi recuperada do historico do git em 02/09: quando
+    `supabase/functions/` foi apagada, so a Meta tinha sido portada.
+
+    Cada lado depende do seu id no concorrente -- `facebook_page_id` e
+    `google_advertiser_id` --, e quem os preenche sem digitacao e a rota de
+    sugestao (`POST /competitors/{id}/ads-suggestion`).
     """
     comp = db.um(
-        "select id, facebook_page_id from public.competitors "
+        "select id, facebook_page_id, google_advertiser_id "
+        "from public.competitors "
         "where id = %s and user_id = %s",
         (str(cid), u["id"]),
     )
     if not comp:
         raise HTTPException(404, "Concorrente nao encontrado.")
-    if not comp["facebook_page_id"]:
+    if not comp["facebook_page_id"] and not comp["google_advertiser_id"]:
         raise HTTPException(
             409,
-            "Este concorrente ainda nao tem pagina do Facebook vinculada. "
-            "Vincule o ID da pagina antes de buscar anuncios.",
+            "Este concorrente nao tem pagina do Facebook nem anunciante do "
+            "Google vinculado. Use a sugestao de anuncios ou informe o id.",
         )
 
-    anuncios = coletores.anuncios_meta(u["id"], comp["facebook_page_id"])
+    # 🚨 UM LADO NAO DERRUBA O OUTRO. Se o Meta falhar e o Google responder, a
+    # busca vale pelo Google -- e vice-versa. Falhar inteiro por causa de um
+    # dos dois esconderia dado que existe. So estoura quando os DOIS falham.
+    anuncios, falhas = [], []
+    if comp["facebook_page_id"]:
+        try:
+            anuncios += [dict(a, source="meta") for a in
+                         coletores.anuncios_meta(u["id"], comp["facebook_page_id"])]
+        except coletores.ErroExterno as e:
+            falhas.append("Meta: " + e.mensagem)
+    if comp["google_advertiser_id"]:
+        try:
+            anuncios += [dict(a, source="google") for a in
+                         coletores.anuncios_google(
+                             u["id"], advertiser_id=comp["google_advertiser_id"])]
+        except coletores.ErroExterno as e:
+            falhas.append("Google: " + e.mensagem)
+    if falhas and not anuncios:
+        raise HTTPException(502, " | ".join(falhas))
+
     gravados = 0
     for a in anuncios:
         if not a["ad_archive_id"]:
@@ -600,13 +624,14 @@ def buscar_ads(cid: uuid.UUID, u=Depends(auth.usuario_atual)):
             "insert into public.ads_snapshots (user_id, competitor_id, source, "
             "ad_archive_id, fetched_date, active, body_text, cta_text, cta_url, "
             "page_name, creatives, start_date, platforms, raw) "
-            "values (%s, %s, 'meta', %s, current_date, %s, %s, %s, %s, %s, %s, "
+            "values (%s, %s, %s, %s, current_date, %s, %s, %s, %s, %s, %s, "
             "%s, %s, %s) "
             "on conflict (competitor_id, source, ad_archive_id, fetched_date) "
             "do update set active = excluded.active, "
             "body_text = excluded.body_text, cta_text = excluded.cta_text, "
             "creatives = excluded.creatives, raw = excluded.raw",
-            (u["id"], str(cid), a["ad_archive_id"], a["active"], a["body_text"],
+            (u["id"], str(cid), a.get("source", "meta"), a["ad_archive_id"],
+             a["active"], a["body_text"],
              a["cta_text"], a["cta_url"], a["page_name"],
              json.dumps(a["creatives"], ensure_ascii=False) if a["creatives"] else None,
              a["start_date"], a["platforms"],
@@ -618,7 +643,11 @@ def buscar_ads(cid: uuid.UUID, u=Depends(auth.usuario_atual)):
         "update public.competitors set last_ads_fetched_at = now() where id = %s",
         (str(cid),),
     )
-    return {"ok": True, "anuncios_recebidos": len(anuncios), "gravados": gravados}
+    return {"ok": True, "anuncios_recebidos": len(anuncios),
+            "gravados": gravados,
+            "meta": sum(1 for a in anuncios if a.get("source") == "meta"),
+            "google": sum(1 for a in anuncios if a.get("source") == "google"),
+            "falhas_parciais": falhas or None}
 
 
 @app.get("/competitors/{cid}/ads-suggestion")

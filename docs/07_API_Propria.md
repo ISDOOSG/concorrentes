@@ -272,30 +272,88 @@ corretamente.
 `fetch-competitor-ads` — só a Meta foi portada. Está no histórico do git se um
 dia for preciso.
 
-## O que falta — e agora é tudo decisão do dono
+## Backup — `scripts/backup_db.py`, cron 02:20
 
-1. ⏳ **A tela mente ao nascer.** Criar um concorrente ainda grava
-   `crawl_status = 'failed'` com *"Configuração inicial pendente: chame
-   bootstrap-app-config"* — texto do gatilho `on_competitor_inserted`, e essa
-   edge function não existe mais nem no repositório. O primeiro crawl corrige o
-   estado, mas até lá o texto é falso.
-2. ⏳ **Os três gatilhos inertes** (`on_competitor_inserted`,
-   `on_snapshot_inserted`, `on_snapshot_suggest_ads`) continuam apontando para
-   edge functions via `pg_net`, extensão que não existe neste banco. Hoje param
-   na guarda do `app_config` vazio; um `app_config` preenchido por engano os
-   reativaria contra um destino inexistente. O quarto,
-   `invoke_generate_alerts`, **funciona e é usado** — é ele que cria o alerta.
-3. ⏳ **FK de `social_snapshots` / `social_analyses`** para `competitors`.
-   Apagar concorrente deixa órfão; as outras cinco tabelas têm `ON DELETE
-   CASCADE`. A origem na Supabase também não tinha — está como `TODO(revisao)`
-   no `DB_SCHEMA.sql`.
-4. ⏳ **Backup do banco e cópia da `CONCORRENTES_CRIPTO_CHAVE` fora da VPS.**
-   Hoje é cópia única; sem ela as chaves BYOK viram texto cifrado
-   indecifrável. É o maior risco silencioso da lista.
-5. ⏳ **Revogar `EXECUTE` de PUBLIC** em `get_llm_key` / `get_scraper_key`.
-6. ⏳ **O provedor `lovable` ainda é escolhível na tela** de configurações
-   (`src/lib/data/llm-models.ts`, `types.ts`, `providers/mock.ts`,
-   `settings.index.tsx`, `integration-card.tsx`), e é o valor gravado hoje em
-   `user_llm_settings`. O `ia.py` trata isso caindo no Gemini do projeto em vez
-   de falhar, mas a tela continua oferecendo um gateway que não existe.
-7. ⏳ **Onde guardar screenshot de crawl**, se for para ter.
+**Existia porque não existia.** Até 02/09 o cron salvava hub-fotos (03:00),
+MoviChat (03:30) e MoviZap (02:40); o `backup_projetos.sh` empacotava o
+*diretório* do concorrentes — código, docs e migrações —, e o **banco não tinha
+uma linha de backup em lugar nenhum**.
+
+Segue o padrão do `backup_db.py` do MoviZap, inclusive nas duas disciplinas que
+custaram caro lá: **a senha nunca passa por `argv`** (vai para um `.pgpass`
+temporário 0600, apagado no `finally`) e **o arquivo só vira definitivo depois
+de ser reaberto e conferido** — 14 tabelas essenciais precisam aparecer dentro
+dele, senão o `.parcial` é descartado.
+
+Retenção de 14 dias. Log em `logs/concorrentes_backup.log`. Testado com
+`env -i`, como o cron executa: 16 tabelas, 1.581 linhas.
+
+🚨 **O QUE ESTE BACKUP SOZINHO NÃO RESTAURA.** As chaves BYOK estão cifradas
+com `pgp_sym_encrypt`, e a chave mestra vive em `api/.env`
+(`CONCORRENTES_CRIPTO_CHAVE`), que **não entra no dump nem no
+`backup_projetos.sh`** — decisão do dono em 28/08 de não empacotar `.env`.
+Restaurar sem ela devolve `user_llm_keys` e `user_scraper_keys` como texto
+cifrado indecifrável. Por isso os dois arquivos de segredo foram copiados para
+`Documentos\Credenciais_VPS_2026-08-28` na máquina do dono, ao lado dos outros
+oito projetos. **Rotacionar um segredo na VPS deixa essa cópia velha em
+silêncio.**
+
+## Os gatilhos do banco, encerrados
+
+Dos quatro herdados, sobrou **um**, e é o que funciona:
+
+| Gatilho | Destino | O que houve |
+|---|---|---|
+| `on_competitor_inserted` | `invoke_crawl_competitor` | 🗑️ derrubado — fazia a tela mentir ao nascer |
+| `on_snapshot_inserted` | `invoke_detect_changes` | 🗑️ derrubado — o diff virou parte do crawl |
+| `on_snapshot_suggest_ads` | `invoke_suggest_ads_links` | 🗑️ derrubado — virou rota explícita, e deixou de gastar crédito como efeito colateral |
+| `on_change_inserted` | `invoke_generate_alerts` | ✅ **fica** — roda inteiro dentro do banco, sem `pg_net`, e é ele que cria o alerta |
+
+Os três derrubados chamavam edge functions por `net.http_post`, e o `pg_net`
+**não existe neste banco**. Paravam antes disso, na guarda do `app_config`
+vazio — mas alguém preenchendo `app_config` por engano os reativaria contra um
+destino que não existe mais. As funções ficam: não são alcançáveis de fora, e
+apagá-las exigiria recriar caso a decisão se reverta.
+
+**PROVADO depois de derrubar**, com a cadeia inteira: concorrente nasce com
+`crawl_status = 'never'` e sem erro · crawl grava snapshot · segundo crawl
+detecta **3 mudanças** · o gatilho que ficou gera **2 alertas** (o `info` fora,
+como desenhado).
+
+## Anúncios: os dois acervos
+
+A parte **Google** foi recuperada do histórico do git em 02/09 — quando
+`supabase/functions/` foi apagada, só a Meta tinha sido portada.
+
+⚠️ **UM LADO NÃO DERRUBA O OUTRO.** Se o Meta falhar e o Google responder, a
+busca vale pelo Google, e vice-versa; só estoura quando os dois falham. Falhar
+inteiro por causa de um deles esconderia dado que existe.
+
+🚨 **O id do anúncio do Google é `creativeId`.** Medido contra a resposta real:
+o item traz `advertiserId`, `creativeId`, `format`, `adUrl`, `advertiserName`,
+`imageUrl`, `firstShown`, `lastShown` — e nada mais. Na primeira tentativa a
+porta procurava `adId`/`ad_id`/`id`, e o resultado foi **40 anúncios recebidos
+e zero gravados**, sem erro nenhum: a inserção pula quem não tem identificador.
+O `ok: true` mentia.
+
+Duas escolhas que vêm da original e continuam valendo: **`active` fica `None`**
+no acervo do Google, porque o plano básico não devolve esse sinal — `False`
+diria "está parado", que é diferente de "não sei"; e o rótulo cai para
+*"Criativo &lt;formato&gt; · &lt;anunciante&gt;"* quando não há texto, porque linha vazia
+parece defeito na tela.
+
+**PROVADO pelo domínio público:** 409 sem nenhum id vinculado; com o anunciante
+`AR14248386603834671105` do Magalu, **40 recebidos, 40 gravados**, lidos de
+volta pela API, e o dado de teste apagado no fim.
+
+## O que falta — uma coisa só
+
+1. ⏳ **Onde guardar screenshot de crawl.** A edge function pedia o formato
+   `screenshot` ao Firecrawl e subia o PNG para o Storage da Supabase, que não
+   existe aqui. As opções são disco da VPS servido pelo nginx, ou não ter.
+   `snapshots.screenshot_path` já existe e fica `NULL`. É decisão do dono.
+
+E duas contas de terceiro para vigiar, que não são trabalho e sim orçamento:
+**Firecrawl** com 1000 créditos/mês (renova 02/10) e **ScrapeCreators com
+menos de 90** — cada perfil de Instagram custa 1, cada busca de anúncio 1, cada
+sugestão 2.

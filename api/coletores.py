@@ -439,3 +439,102 @@ def buscar_anunciantes(user_id, nome):
     except ErroExterno:
         pass
     return saida
+
+
+def anuncios_google(user_id, advertiser_id=None, dominio=None, com_detalhe=False):
+    """Anuncios no acervo do Google, por anunciante ou por dominio.
+
+    Recuperada do historico do git em 02/09: quando `supabase/functions/` foi
+    apagada, so a parte Meta tinha sido portada, e esta ficou para tras.
+
+    ⚠️ `get_ad_details=true` custa mais credito e traz o texto do anuncio. Sem
+    ele a resposta e o basico -- por isso o rotulo cai para "Criativo <formato>
+    · <anunciante>" em vez de ficar vazio: uma linha sem texto nenhum parece
+    defeito na tela, e nao e.
+    """
+    if advertiser_id:
+        qs = "advertiser_id=" + urllib.parse.quote(str(advertiser_id))
+    elif dominio:
+        qs = "domain=" + urllib.parse.quote(str(dominio))
+    else:
+        return []
+    if com_detalhe:
+        qs += "&get_ad_details=true"
+    bruto = _pedir("https://api.scrapecreators.com/v1/google/company/ads?" + qs,
+                   {"x-api-key": chave(user_id, "scrapecreators")}, segundos=90)
+    itens = (bruto if isinstance(bruto, list)
+             else bruto.get("ads") or bruto.get("results") or bruto.get("data") or [])
+    return [_normalizar_anuncio_google(a) for a in itens if isinstance(a, dict)]
+
+
+def _primeiro(*valores):
+    for v in valores:
+        if isinstance(v, str) and v.strip():
+            return v.strip()
+    return None
+
+
+def _normalizar_anuncio_google(bruto):
+    # 🚨 O ID E . Medido em 02/09 contra a resposta real do
+    # ScrapeCreators: o item traz advertiserId, creativeId, format, adUrl,
+    # advertiserName, imageUrl, firstShown e lastShown -- e mais nada. Sem o
+    #  na lista, os 40 anuncios do Magalu vieram e ZERO foram
+    # gravados, porque a insercao pula quem nao tem identificador.
+    ident = _primeiro(bruto.get("creativeId"), bruto.get("creative_id"),
+                      bruto.get("adId"), bruto.get("ad_id"), bruto.get("id"))
+    if not ident:
+        return {"ad_archive_id": "", "raw": bruto}
+
+    anunciante_id = _primeiro(bruto.get("advertiserId"), bruto.get("advertiser_id"))
+    anunciante = _primeiro(bruto.get("advertiserName"), bruto.get("advertiser_name"),
+                           bruto.get("advertiser"))
+    formato = str(bruto.get("format") or bruto.get("creative_format") or "").lower()
+
+    midia = _primeiro(bruto.get("imageUrl"), bruto.get("image_url"),
+                      bruto.get("videoUrl"), bruto.get("video_url"),
+                      bruto.get("preview_url"), bruto.get("creative_url"))
+    criativos = []
+    if midia:
+        criativos.append({
+            "type": "video" if "video" in formato else "image",
+            "url": midia,
+            "thumbnail": _primeiro(bruto.get("thumbnail_url"), bruto.get("imageUrl")),
+        })
+
+    # Sem URL do anuncio, monta a da Transparencia -- o id do anunciante basta.
+    url_anuncio = _primeiro(bruto.get("adUrl"), bruto.get("ad_url"))
+    if not url_anuncio and anunciante_id:
+        url_anuncio = ("https://adstransparency.google.com/advertiser/%s/creative/%s"
+                       "?region=anywhere" % (anunciante_id, ident))
+
+    texto = _primeiro(bruto.get("text"), bruto.get("body"), bruto.get("description"),
+                      bruto.get("ad_text"))
+    if not texto:
+        if formato and anunciante:
+            texto = "Criativo %s - %s" % (formato, anunciante)
+        elif formato:
+            texto = "Criativo %s" % formato
+        elif anunciante:
+            texto = "Anuncio - %s" % anunciante
+
+    ativo = bruto.get("is_active")
+    if ativo is None:
+        ativo = bruto.get("active")
+
+    return {
+        "ad_archive_id": str(ident),
+        # 🚨 O acervo do Google NAO devolve sinal de ativo no plano basico.
+        # Fica None de proposito: `False` diria "esta parado", que e diferente
+        # de "nao sei", e a tela mostra "Veiculando" para o desconhecido.
+        "active": ativo if isinstance(ativo, bool) else None,
+        "body_text": texto,
+        "cta_text": _primeiro(bruto.get("cta"), bruto.get("cta_text")),
+        "cta_url": _primeiro(bruto.get("destination_url"), bruto.get("url"),
+                             bruto.get("click_url")) or url_anuncio,
+        "page_name": anunciante,
+        "creatives": criativos or None,
+        "start_date": _primeiro(bruto.get("firstShown"), bruto.get("first_shown"),
+                                bruto.get("start_date")),
+        "platforms": ["google"],
+        "raw": bruto,
+    }
