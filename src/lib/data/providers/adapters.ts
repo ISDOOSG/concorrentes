@@ -219,13 +219,3 @@ export function timeAgo(iso: string): string {
   const d = Math.floor(h / 24);
   return `Há ${d}d`;
 }
-
-async function getUserIdOrThrow(): Promise<string> {
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) throw new Error("Não autenticado");
-  return user.id;
-}
-
-// ----- Provider -----
