@@ -8,7 +8,10 @@ import { ChangeTypeIcon } from "@/components/ic/change-type-icon";
 import { SkeletonAlertRow } from "@/components/ic/skeleton";
 import { UserMenu } from "@/components/ic/user-menu";
 import { useAuthedUser } from "@/lib/use-authed-user";
-import { useAlerts } from "@/lib/data/hooks/use-alerts";
+import { useAlerts, useMarkAlertRead } from "@/lib/data/hooks/use-alerts";
+import { toastDataError } from "@/lib/data/error-toast";
+import { toast } from "sonner";
+import { Check } from "lucide-react";
 import { useCompetitors } from "@/lib/data/hooks/use-competitors";
 import type { Severity } from "@/lib/ic-mock";
 
@@ -29,10 +32,12 @@ function AlertsPage() {
   const authed = useAuthedUser();
   const alertsQ = useAlerts();
   const competitorsQ = useCompetitors();
+  const marcarLido = useMarkAlertRead();
   const [severity, setSeverity] = useState<"all" | Severity>("all");
   const [competitorFilter, setCompetitorFilter] = useState<string | "all">(
     "all",
   );
+  const [busca, setBusca] = useState("");
 
   const handleLogout = async () => {
     if (authed) await authed.logout();
@@ -43,20 +48,26 @@ function AlertsPage() {
   const competitors = competitorsQ.data ?? [];
   const allAlerts = alertsQ.data ?? [];
 
+  const naoLidos = allAlerts.filter((a) => !a.read).length;
+
   const filtered = useMemo(() => {
+    const termo = busca.trim().toLowerCase();
     return allAlerts.filter(
       (a) =>
         (severity === "all" || a.severity === severity) &&
-        (competitorFilter === "all" || a.competitor === competitorFilter),
+        (competitorFilter === "all" || a.competitor === competitorFilter) &&
+        (termo === "" || a.title.toLowerCase().includes(termo)),
     );
-  }, [allAlerts, severity, competitorFilter]);
+  }, [allAlerts, severity, competitorFilter, busca]);
 
   return (
     <>
       <AppTopbar
         title="Alertas"
-        subtitle={`${allAlerts.length} mudanças detectadas`}
-        alertsCount={allAlerts.length}
+        subtitle={`${allAlerts.length} mudanças detectadas · ${naoLidos} não lidas`}
+        alertsCount={naoLidos}
+        onSearchChange={setBusca}
+        searchPlaceholder="Buscar no texto do alerta…"
         trailing={
           authed ? (
             <UserMenu
@@ -173,6 +184,36 @@ function AlertsPage() {
                     {a.confidence}% conf.
                   </div>
                   <div className="ic-alert-time">{a.time}</div>
+                  {a.read ? (
+                    <span
+                      style={{
+                        fontSize: 11,
+                        color: "var(--via-color-text-muted)",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      Lida
+                    </span>
+                  ) : (
+                    <button
+                      type="button"
+                      className="ic-btn ic-btn-secondary"
+                      style={{ whiteSpace: "nowrap" }}
+                      disabled={marcarLido.isPending}
+                      onClick={(e) => {
+                        // A linha inteira navega para o concorrente; sem isto
+                        // marcar como lida levaria o usuario para outra tela.
+                        e.stopPropagation();
+                        marcarLido.mutate(a.id, {
+                          onSuccess: () => toast.success("Alerta marcado como lido"),
+                          onError: (err) => toastDataError(err),
+                        });
+                      }}
+                    >
+                      <Check size={12} />
+                      Marcar como lida
+                    </button>
+                  )}
                 </div>
               );
             })

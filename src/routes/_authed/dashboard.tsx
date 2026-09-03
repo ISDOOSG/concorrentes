@@ -1,12 +1,11 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
-import { toast } from "sonner";
 
 import { AppTopbar } from "@/components/ic/app-topbar";
 import { Dashboard } from "@/components/ic/dashboard/dashboard";
 import { UserMenu } from "@/components/ic/user-menu";
 import { useAuthedUser } from "@/lib/use-authed-user";
-import { useAlerts } from "@/lib/data/hooks/use-alerts";
+import { useAlerts, useUnreadAlertsCount } from "@/lib/data/hooks/use-alerts";
 import type { NavItemId } from "@/components/ic/app-sidebar";
 
 export const Route = createFileRoute("/_authed/dashboard")({
@@ -18,9 +17,17 @@ function DashboardPage() {
   const qc = useQueryClient();
   const authed = useAuthedUser();
   const alertsQ = useAlerts();
-  const alertsCount = alertsQ.data?.length ?? 0;
+  const alertsCount = useUnreadAlertsCount();
 
-  const ROUTE_BY_NAV: Partial<Record<NavItemId, string>> = {
+  // Atalhos internos do dashboard (cartoes "ver todos", "gerar SWOT"...).
+  // A navegacao da barra lateral NAO passa por aqui -- ela vive em
+  // `routes/_authed.tsx` e cobre os 8 destinos. Este mapa cobre so os ids
+  // que os cartoes do dashboard disparam, e o `NavItemId` garante em tempo
+  // de compilacao que nenhum id invalido entre.
+  const ROUTE_BY_NAV: Record<
+    Extract<NavItemId, "dashboard" | "competitors" | "compare" | "alerts" | "swot" | "onboard" | "settings" | "help">,
+    string
+  > = {
     dashboard: "/dashboard",
     competitors: "/competitors",
     compare: "/compare",
@@ -28,15 +35,11 @@ function DashboardPage() {
     swot: "/swot",
     onboard: "/onboard",
     settings: "/settings",
+    help: "/help",
   };
 
   const onNavigate = (id: NavItemId) => {
-    const to = ROUTE_BY_NAV[id];
-    if (!to) {
-      toast.info(`Tela "${id}" em construção`);
-      return;
-    }
-    navigate({ to });
+    navigate({ to: ROUTE_BY_NAV[id] });
   };
 
   const onSelectCompetitor = (id: string) => {

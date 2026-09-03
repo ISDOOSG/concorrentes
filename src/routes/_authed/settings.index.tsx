@@ -20,6 +20,7 @@ import {
 import { toastDataError } from "@/lib/data/error-toast";
 import type { LLMProviderId, LLMUseCase } from "@/lib/data/types";
 import { LLM_MODELS, getDefaultModel } from "@/lib/data/llm-models";
+import { useUnreadAlertsCount } from "@/lib/data/hooks/use-alerts";
 
 export const Route = createFileRoute("/_authed/settings/")({
   component: SettingsPage,
@@ -52,6 +53,7 @@ function SettingsPage() {
   const qc = useQueryClient();
   const authed = useAuthedUser();
   const alertsQ = useAlerts();
+  const naoLidos = useUnreadAlertsCount();
   const settingsQ = useLlmSettings();
   const setProviderMut = useSetLlmProvider();
   const setModelMut = useSetLlmModel();
@@ -73,7 +75,7 @@ function SettingsPage() {
       <AppTopbar
         title="Configurações"
         subtitle="Sua conta · LLM · Monitoramento"
-        alertsCount={alertsQ.data?.length ?? 0}
+        alertsCount={naoLidos}
         trailing={
           authed ? (
             <UserMenu
@@ -159,7 +161,11 @@ function SettingsPage() {
         >
           {PROVIDERS.map((p) => {
             const isSelected = settings?.provider === p.id;
-            const keyHint = settings?.hasKeyByProvider?.[p.id];
+            const entrada = settings?.hasKeyByProvider?.[p.id];
+            // Chave do projeto nao e "chave cadastrada": nao se apaga, nao
+            // tem data, e o campo para colar a propria continua disponivel.
+            const doProjeto = entrada?.source === "projeto" ? entrada : null;
+            const keyHint = entrada && !doProjeto ? entrada : null;
             const inputValue = keyInput[p.id] ?? "";
             return (
               <div
@@ -240,9 +246,15 @@ function SettingsPage() {
                               color: "var(--via-color-text-muted)",
                             }}
                           >
-                            Cadastrada em{" "}
-                            {new Date(keyHint.createdAt).toLocaleDateString(
-                              "pt-BR",
+                            {keyHint.createdAt ? (
+                              <>
+                                Cadastrada em{" "}
+                                {new Date(keyHint.createdAt).toLocaleDateString(
+                                  "pt-BR",
+                                )}
+                              </>
+                            ) : (
+                              <>Cadastrada</>
                             )}
                           </div>
                         </div>
@@ -261,6 +273,25 @@ function SettingsPage() {
                         </button>
                       </div>
                     ) : (
+                      <div>
+                        {doProjeto && (
+                          <div
+                            style={{
+                              marginBottom: 8,
+                              padding: "8px 12px",
+                              background: "var(--via-bg-2)",
+                              borderRadius: 8,
+                              fontSize: 12,
+                              color: "var(--via-color-text-muted)",
+                            }}
+                          >
+                            <strong style={{ color: "var(--via-navy)" }}>
+                              Ativa pela chave do projeto
+                            </strong>{" "}
+                            (…{doProjeto.keyHint}) — já funciona sem você fazer
+                            nada. Cole a sua abaixo para cobrar na sua conta.
+                          </div>
+                        )}
                       <div style={{ display: "flex", gap: 8 }}>
                         <input
                           type="password"
@@ -301,6 +332,7 @@ function SettingsPage() {
                         >
                           Salvar
                         </button>
+                      </div>
                       </div>
                     )}
                   </div>

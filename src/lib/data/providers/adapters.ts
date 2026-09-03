@@ -14,6 +14,7 @@ import type {
   Snapshot,
   SnapshotStructuredData,
 } from "@/lib/ic-mock";
+import type { CompetitorChange } from "../types";
 
 
 // ----- Adapters -----
@@ -137,6 +138,7 @@ export function adaptAlert(row: AlertWithChangeRow): Alert {
     type: CHANGE_TYPE_FROM_DB[c?.change_type ?? ""] ?? "content",
     title: c?.summary ?? "Mudança detectada",
     detail: row.read_at ? "Lido" : "Novo",
+    read: Boolean(row.read_at),
     time: timeAgo(row.created_at),
     source: row.channel,
     confidence: 90,
@@ -207,6 +209,42 @@ export function adaptAd(row: AdRow): Ad {
     end_date: row.end_date,
     platforms: row.platforms ?? [],
     fetched_at: row.fetched_at,
+  };
+}
+
+/** Linha crua de `public.changes`, como a API devolve. */
+export type ChangeRow = {
+  id: string;
+  competitor_id: string;
+  from_snapshot_id: string | null;
+  to_snapshot_id: string | null;
+  detected_at: string;
+  change_type: string;
+  severity: string;
+  summary: string | null;
+  diff: Record<string, unknown> | null;
+};
+
+/**
+ * Mudanca do banco -> item da Timeline.
+ *
+ * Reaproveita os DOIS mapas acima de proposito: a Timeline e os alertas
+ * mostram a mesma mudanca em telas diferentes, e ate 03/09 so os alertas
+ * traduziam o vocabulario. Um segundo mapa aqui era garantia de divergirem.
+ */
+export function adaptChange(row: ChangeRow): CompetitorChange {
+  return {
+    id: row.id,
+    competitorId: row.competitor_id,
+    detectedAt: row.detected_at,
+    date: new Date(row.detected_at).toLocaleDateString("pt-BR", {
+      day: "2-digit",
+      month: "2-digit",
+    }),
+    type: CHANGE_TYPE_FROM_DB[row.change_type] ?? "content",
+    severity: SEVERITY_FROM_DB[row.severity] ?? "low",
+    label: row.summary ?? "Mudanca detectada",
+    diff: row.diff ?? null,
   };
 }
 

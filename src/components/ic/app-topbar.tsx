@@ -1,4 +1,5 @@
-import { Search, Bell, Download } from "lucide-react";
+import { Search, Bell } from "lucide-react";
+import { Link } from "@tanstack/react-router";
 import { DemoModeToggle } from "./demo-mode-toggle";
 import { ThemeToggle } from "./theme-toggle";
 
@@ -8,7 +9,9 @@ type Props = {
   alertsCount?: number;
   right?: React.ReactNode;
   trailing?: React.ReactNode;
+  /** Quando ausente, o campo de busca nao e renderizado. */
   onSearchChange?: (q: string) => void;
+  searchPlaceholder?: string;
 };
 
 export function AppTopbar({
@@ -18,6 +21,7 @@ export function AppTopbar({
   right,
   trailing,
   onSearchChange,
+  searchPlaceholder,
 }: Props) {
   return (
     <header className="ic-topbar">
@@ -26,36 +30,27 @@ export function AppTopbar({
         <h1 className="ic-topbar-title">{title}</h1>
       </div>
       <div className="ic-topbar-actions">
-        <div className="ic-search">
-          <Search size={14} strokeWidth={1.75} />
-          <input
-            placeholder="Buscar concorrente, mudança ou keyword…"
-            onChange={(e) => onSearchChange?.(e.target.value)}
-          />
-          <span
-            style={{
-              fontSize: 10,
-              padding: "2px 6px",
-              borderRadius: 3,
-              background: "rgba(2,22,42,0.08)",
-              color: "var(--via-color-text-muted)",
-              fontWeight: 700,
-              letterSpacing: "0.06em",
-            }}
-          >
-            ⌘K
-          </span>
-        </div>
+        {/* A busca so aparece onde alguem realmente filtra. O campo estava em
+            todas as 11 telas com `onSearchChange` opcional e NENHUMA o
+            passava: dava para digitar em qualquer lugar e nada acontecia.
+            O selo ⌘K saiu junto -- prometia um atalho que nao existe. */}
+        {onSearchChange && (
+          <div className="ic-search">
+            <Search size={14} strokeWidth={1.75} />
+            <input
+              placeholder={searchPlaceholder ?? "Buscar…"}
+              onChange={(e) => onSearchChange(e.target.value)}
+            />
+          </div>
+        )}
         {right}
         <DemoModeToggle />
         <ThemeToggle />
-        <button type="button" className="ic-iconbtn" title="Alertas">
+        {/* Era um botao sem onClick: o sino nao levava a lugar nenhum. */}
+        <Link to="/alerts" className="ic-iconbtn" title="Alertas" aria-label="Alertas">
           <Bell size={16} strokeWidth={1.75} />
           {alertsCount > 0 && <span className="dot" />}
-        </button>
-        <button type="button" className="ic-iconbtn" title="Exportar">
-          <Download size={16} strokeWidth={1.75} />
-        </button>
+        </Link>
         {trailing}
       </div>
     </header>

@@ -12,6 +12,7 @@ import { useAuthedUser } from "@/lib/use-authed-user";
 import { useCompetitors } from "@/lib/data/hooks/use-competitors";
 import { useAlerts } from "@/lib/data/hooks/use-alerts";
 import type { Competitor } from "@/lib/ic-mock";
+import { useUnreadAlertsCount } from "@/lib/data/hooks/use-alerts";
 
 export const Route = createFileRoute("/_authed/compare")({
   component: ComparePage,
@@ -123,6 +124,7 @@ function ComparePage() {
   const authed = useAuthedUser();
   const competitorsQ = useCompetitors();
   const alertsQ = useAlerts();
+  const naoLidos = useUnreadAlertsCount();
   const [selected, setSelected] = useState<string[]>([]);
 
   const handleLogout = async () => {
@@ -149,7 +151,7 @@ function ComparePage() {
       <AppTopbar
         title="Comparar concorrentes"
         subtitle="Lado a lado · até 3"
-        alertsCount={alertsQ.data?.length ?? 0}
+        alertsCount={naoLidos}
         trailing={
           authed ? (
             <UserMenu

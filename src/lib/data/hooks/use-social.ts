@@ -9,14 +9,6 @@ const KEYS = {
   handles: (id: string) => ["social-handles", id] as const,
 };
 
-export function useSocialSnapshots(competitorId: string | undefined, platform: SocialPlatform = "instagram") {
-  return useQuery({
-    queryKey: competitorId ? KEYS.snapshots(competitorId, platform) : ["social-snapshots", "noop"],
-    queryFn: () => (competitorId ? socialApi.listSnapshots(competitorId, platform) : Promise.resolve([])),
-    enabled: !!competitorId,
-  });
-}
-
 export function useLatestSocialSnapshot(competitorId: string | undefined, platform: SocialPlatform = "instagram") {
   return useQuery({
     queryKey: competitorId ? KEYS.latest(competitorId, platform) : ["social-latest", "noop"],

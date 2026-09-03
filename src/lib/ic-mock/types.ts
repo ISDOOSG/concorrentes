@@ -117,6 +117,10 @@ export type Alert = {
   time: string;
   source: string;
   confidence: number;
+  /** Se o alerta ja foi marcado como lido. Ate 03/09 o estado de leitura so
+   *  existia embutido na string `detail` ("Lido"/"Novo"), o que impedia
+   *  contar nao lidos sem comparar texto. */
+  read?: boolean;
 };
 
 export type SwotItem = { title: string; evidence: string };

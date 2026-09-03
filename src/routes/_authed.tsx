@@ -12,8 +12,9 @@ import { AppSidebar, type NavItemId } from "@/components/ic/app-sidebar";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useDemoMode } from "@/lib/data/use-demo-mode";
-import { useAlerts } from "@/lib/data/hooks/use-alerts";
+import { useAlerts, useUnreadAlertsCount } from "@/lib/data/hooks/use-alerts";
 import { useCompetitors } from "@/lib/data/hooks/use-competitors";
+import { useMyProfile, rotuloDoPlano } from "@/lib/use-my-profile";
 
 export const Route = createFileRoute("/_authed")({
   // IMPORTANTE: NAO usar `beforeLoad` para checar sessao aqui.
@@ -88,6 +89,7 @@ function AuthedShell({
   const [drawerOpen, setDrawerOpen] = useState(false);
   const competitorsQ = useCompetitors();
   const alertsQ = useAlerts();
+  const profileQ = useMyProfile();
 
   const onNavigate = (id: NavItemId) => {
     setDrawerOpen(false);
@@ -105,9 +107,13 @@ function AuthedShell({
   const userInitials = (userEmail[0] ?? "A").toUpperCase();
   const userMetaName = session.user.nome ?? userEmail;
 
+  // O contador conta NAO LIDOS. Contando o total, o numero da barra lateral
+  // so crescia: nada no produto o fazia baixar, porque nem existia como
+  // marcar um alerta como lido ate 03/09.
+  const naoLidos = useUnreadAlertsCount();
   const counts: Partial<Record<NavItemId, number>> = {
     competitors: competitorsQ.data?.length,
-    alerts: alertsQ.data?.length,
+    alerts: naoLidos,
   };
 
   const sidebar = (
@@ -117,7 +123,7 @@ function AuthedShell({
       counts={counts}
       userInitials={userInitials}
       userName={userMetaName}
-      userPlan="Plano Free"
+      userPlan={rotuloDoPlano(profileQ.data?.plan) ?? undefined}
     />
   );
 

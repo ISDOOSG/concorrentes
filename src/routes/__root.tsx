@@ -32,14 +32,14 @@ export const Route = createRootRoute({
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "Análise de Concorrentes · Viver de IA" },
+      { title: "Análise de Concorrentes · ImagoHub" },
       {
         name: "description",
         content:
           "Plataforma de inteligência competitiva: monitore mudanças de preço, copy e funcionalidades dos seus concorrentes em tempo real, com insights gerados por IA.",
       },
-      { name: "author", content: "Viver de IA" },
-      { property: "og:title", content: "Análise de Concorrentes · Viver de IA" },
+      { name: "author", content: "ImagoHub" },
+      { property: "og:title", content: "Análise de Concorrentes · ImagoHub" },
       {
         property: "og:description",
         content:
@@ -47,7 +47,7 @@ export const Route = createRootRoute({
       },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },
-      { name: "twitter:title", content: "Análise de Concorrentes · Viver de IA" },
+      { name: "twitter:title", content: "Análise de Concorrentes · ImagoHub" },
       {
         name: "twitter:description",
         content:

@@ -31,7 +31,7 @@ import {
   useToggleCompetitorStatus,
   useTriggerCrawl,
 } from "@/lib/data/hooks/use-competitors";
-import { useAlerts } from "@/lib/data/hooks/use-alerts";
+import { useAlerts, useUnreadAlertsCount } from "@/lib/data/hooks/use-alerts";
 import { toastDataError } from "@/lib/data/error-toast";
 
 export const Route = createFileRoute("/_authed/competitors/")({
@@ -61,8 +61,10 @@ function CompetitorsListPage() {
   const authed = useAuthedUser();
   const [open, setOpen] = useState(false);
   const [errorView, setErrorView] = useState<Competitor | null>(null);
+  const [busca, setBusca] = useState("");
   const competitorsQ = useCompetitors();
   const alertsQ = useAlerts();
+  const naoLidos = useUnreadAlertsCount();
   const createMut = useCreateCompetitor();
   const deleteMut = useDeleteCompetitor();
   const toggleMut = useToggleCompetitorStatus();
@@ -74,14 +76,24 @@ function CompetitorsListPage() {
     navigate({ to: "/login", replace: true });
   };
 
-  const competitors = competitorsQ.data ?? [];
+  const todos = competitorsQ.data ?? [];
+  const termo = busca.trim().toLowerCase();
+  const competitors = termo
+    ? todos.filter(
+        (c) =>
+          c.name.toLowerCase().includes(termo) ||
+          (c.domain ?? "").toLowerCase().includes(termo),
+      )
+    : todos;
 
   return (
     <>
       <AppTopbar
         title="Concorrentes"
         subtitle="Monitoramento"
-        alertsCount={alertsQ.data?.length ?? 0}
+        alertsCount={naoLidos}
+        onSearchChange={setBusca}
+        searchPlaceholder="Buscar por nome ou domínio…"
         trailing={
           authed ? (
             <UserMenu
@@ -211,10 +223,14 @@ function CompetitorsListPage() {
                 </div>
               </div>
               <div style={{ display: "flex", gap: 6 }} onClick={(e) => e.stopPropagation()}>
+                {/* Com texto, nao so o icone: `title` nao e rotulo -- o balao
+                    leva cerca de um segundo para aparecer e nao existe em
+                    toque. Este era o unico disparo de crawl na lista, e
+                    ninguem o encontrava. */}
                 <button
                   type="button"
-                  className="ic-iconbtn"
-                  title="Crawlear agora"
+                  className="ic-btn ic-btn-secondary"
+                  style={{ whiteSpace: "nowrap" }}
                   disabled={crawlMut.isPending}
                   onClick={() =>
                     crawlMut.mutate(c.id, {
@@ -225,6 +241,7 @@ function CompetitorsListPage() {
                   }
                 >
                   <RefreshCw size={14} />
+                  Crawlear agora
                 </button>
                 <button
                   type="button"

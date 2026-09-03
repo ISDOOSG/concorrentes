@@ -34,7 +34,37 @@ export type LLMSettings = {
   provider: LLMProviderId;
   modelClassification: string | null;
   modelSwot: string | null;
-  hasKeyByProvider: Partial<Record<LLMProviderId, { keyHint: string; createdAt: string }>>;
+  hasKeyByProvider: Partial<
+    Record<
+      LLMProviderId,
+      {
+        keyHint: string;
+        /** Null quando a chave e a do projeto -- ninguem a "cadastrou". */
+        createdAt: string | null;
+        source: "usuario" | "projeto";
+      }
+    >
+  >;
+};
+
+/**
+ * Uma mudanca detectada entre dois crawls consecutivos -- o conteudo da aba
+ * "Timeline de mudancas".
+ *
+ * A tabela `changes` existia desde o inicio e era escrita a cada crawl, mas
+ * nenhuma rota a lia: a Timeline mostrava dados fixos de vitrine ou um estado
+ * vazio permanente. Este tipo e o contrato que fechou esse circuito.
+ */
+export type CompetitorChange = {
+  id: string;
+  competitorId: string;
+  detectedAt: string;
+  /** Ja formatado em dd/mm para a coluna da esquerda da timeline. */
+  date: string;
+  type: import("@/lib/ic-mock").ChangeType;
+  severity: import("@/lib/ic-mock").Severity;
+  label: string;
+  diff: Record<string, unknown> | null;
 };
 
 export type CreateCompetitorInput = {
@@ -48,7 +78,10 @@ export type CreateCompetitorInput = {
 // no PR Lovable (lovable-ads-monitoring-prompt.md).
 export type ScraperProviderId = "firecrawl" | "scrapecreators";
 
-export type ScraperKeySource = "manual" | "lovable_connector";
+// "projeto" nao e uma chave que o usuario cadastrou: e a chave do `.env` do
+// servico, que `coletores.chave()` usa como piso. Existe para a tela poder
+// dizer "ativo pela chave do projeto" em vez de "nao configurado".
+export type ScraperKeySource = "manual" | "lovable_connector" | "projeto";
 
 export type ScraperKeyInfo = {
   provider: ScraperProviderId;
@@ -107,6 +140,12 @@ export type DataProvider = {
     competitorId: string,
     limit?: number,
   ): Promise<import("@/lib/ic-mock").Snapshot[]>;
+
+  // mudancas detectadas entre crawls (aba Timeline)
+  listChanges(
+    competitorId: string,
+    limit?: number,
+  ): Promise<CompetitorChange[]>;
 
   // ads (Meta + Google via ScrapeCreators)
   listAds(competitorId: string): Promise<import("@/lib/ic-mock").Ad[]>;

@@ -17,3 +17,15 @@ export function useMarkAlertRead() {
     onSuccess: () => qc.invalidateQueries({ queryKey: KEY }),
   });
 }
+
+/**
+ * Quantos alertas ainda nao foram lidos.
+ *
+ * A barra lateral e o sino do topo mostravam o TOTAL de alertas, que so
+ * cresce: nada no produto marcava um alerta como lido, entao o numero nunca
+ * baixava e o ponto vermelho ficava aceso para sempre.
+ */
+export function useUnreadAlertsCount(): number {
+  const q = useAlerts();
+  return q.data?.filter((a) => !a.read).length ?? 0;
+}

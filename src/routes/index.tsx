@@ -61,7 +61,7 @@ function Index() {
           AC
         </span>
         <span className="via-label" style={{ fontSize: 12 }}>
-          Análise de Concorrentes · Viver de IA
+          Análise de Concorrentes · ImagoHub
         </span>
       </div>
 

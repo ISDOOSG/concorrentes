@@ -20,7 +20,7 @@ import json
 import re
 import uuid
 
-from fastapi import Depends, FastAPI, HTTPException
+from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, EmailStr, Field
@@ -197,7 +197,11 @@ def ver_concorrente(cid: uuid.UUID, u=Depends(auth.usuario_atual)):
 
 
 @app.post("/competitors", status_code=201)
-def criar_concorrente(c: NovoConcorrente, u=Depends(auth.usuario_atual)):
+def criar_concorrente(
+    c: NovoConcorrente,
+    tarefas: BackgroundTasks,
+    u=Depends(auth.usuario_atual),
+):
     quota = db.um("select url_quota from public.profiles where id = %s", (u["id"],))
     usados = db.um(
         "select count(*) as n from public.competitors where user_id = %s", (u["id"],)
@@ -215,11 +219,22 @@ def criar_concorrente(c: NovoConcorrente, u=Depends(auth.usuario_atual)):
         url = "https://" + url
     dominio = url.split("://", 1)[-1].split("/", 1)[0]
     nome = c.name.strip() or dominio
-    return db.um(
-        "insert into public.competitors (user_id, name, url) "
-        "values (%s, %s, %s) returning *",
+    # Nasce 'queued', nao 'never': o primeiro crawl sai daqui, em segundo
+    # plano. Na Lovable quem fazia isso era um gatilho que chamava
+    # `bootstrap-app-config` -- funcao que nao existe mais. Derrubamos o
+    # gatilho em 02/09 e ate 03/09 nada ocupou o lugar dele: o concorrente
+    # nascia parado e so era crawleado na madrugada seguinte, sem a tela
+    # dizer isso em lugar nenhum.
+    #
+    # Custo: 1 credito de Firecrawl por cadastro. A cota de concorrentes
+    # (`profiles.url_quota`) e o teto que segura o gasto.
+    linha = db.um(
+        "insert into public.competitors (user_id, name, url, crawl_status) "
+        "values (%s, %s, %s, 'queued') returning *",
         (u["id"], nome, url),
     )
+    tarefas.add_task(_primeiro_crawl_em_segundo_plano, u["id"], str(linha["id"]))
+    return linha
 
 
 @app.patch("/competitors/{cid}/status")
@@ -256,15 +271,18 @@ def vincular_ads(cid: uuid.UUID, v: VinculoAds, u=Depends(auth.usuario_atual)):
         raise HTTPException(404, "Concorrente nao encontrado.")
 
 
-@app.post("/competitors/{cid}/crawl", status_code=201)
-def disparar_crawl(cid: uuid.UUID, u=Depends(auth.usuario_atual)):
+def _rodar_crawl(user_id, cid):
     """Porta a edge function `crawl-competitor`.
 
     Faz a cadeia inteira que os gatilhos do banco faziam por `pg_net`:
     raspa, grava snapshot, compara com o anterior e grava as mudancas. Os
     alertas NAO sao inseridos aqui -- o gatilho `on_change_inserted` ja o faz
     dentro do banco, e inserir dos dois lados duplicaria todo alerta.
+
+    Extraida do endpoint para que o cadastro de concorrente possa disparar o
+    primeiro crawl em segundo plano sem duplicar uma linha desta cadeia.
     """
+    u = {"id": user_id}
     comp = db.um(
         "select id, name, url from public.competitors where id = %s and user_id = %s",
         (str(cid), u["id"]),
@@ -348,9 +366,50 @@ def disparar_crawl(cid: uuid.UUID, u=Depends(auth.usuario_atual)):
     }
 
 
+@app.post("/competitors/{cid}/crawl", status_code=201)
+def disparar_crawl(cid: uuid.UUID, u=Depends(auth.usuario_atual)):
+    return _rodar_crawl(u["id"], str(cid))
+
+
+def _primeiro_crawl_em_segundo_plano(user_id, cid):
+    """Roda o crawl de estreia sem segurar a resposta do cadastro.
+
+    Engole a falha de proposito: `_rodar_crawl` ja grava `crawl_status` e
+    `crawl_error` na linha do concorrente, que e onde a tela le. Deixar a
+    excecao subir aqui so encheria o log -- ninguem esta esperando por ela.
+    """
+    try:
+        _rodar_crawl(user_id, cid)
+    except Exception as e:  # noqa: BLE001 -- ver docstring
+        print("primeiro crawl de %s falhou: %s" % (cid, e), flush=True)
+
+
+# ------------------------------------------------------- mudancas detectadas
+@app.get("/competitors/{cid}/changes")
+def listar_mudancas(cid: uuid.UUID, limit: int = 50, u=Depends(auth.usuario_atual)):
+    """As mudancas que o comparador gravou entre dois crawls consecutivos.
+
+    E a fonte da aba "Timeline de mudancas". Antes desta rota a tabela
+    `changes` era escrita pelo crawl e nunca lida por ninguem.
+    """
+    dono = db.um(
+        "select id from public.competitors where id = %s and user_id = %s",
+        (str(cid), u["id"]),
+    )
+    if not dono:
+        raise HTTPException(404, "Concorrente nao encontrado.")
+    return db.varios(
+        "select id, competitor_id, from_snapshot_id, to_snapshot_id, "
+        "detected_at, change_type, severity, summary, diff "
+        "from public.changes where competitor_id = %s and user_id = %s "
+        "order by detected_at desc limit %s",
+        (str(cid), u["id"], max(1, min(limit, 200))),
+    )
+
+
 # -------------------------------------------------------------------- alertas
 @app.get("/alerts")
-def listar_alertas(u=Depends(auth.usuario_atual)):
+def listar_alertas(apenas_nao_lidos: bool = False, u=Depends(auth.usuario_atual)):
     # 'change' vem ANINHADO de proposito -- e o formato que o join do
     # supabase-js produzia (select "...,change:changes(...)"), e os
     # adaptadores do front (adaptAlert, importados de providers/supabase.ts)
@@ -361,7 +420,9 @@ def listar_alertas(u=Depends(auth.usuario_atual)):
         "c.competitor_id, c.severity, c.summary, c.change_type "
         "from public.alerts a "
         "left join public.changes c on c.id = a.change_id "
-        "where a.user_id = %s order by a.created_at desc limit 200",
+        "where a.user_id = %s "
+        + ("and a.read_at is null " if apenas_nao_lidos else "")
+        + "order by a.created_at desc limit 200",
         (u["id"],),
     )
     saida = []
@@ -793,14 +854,28 @@ def _settings_llm(user_id):
         "where user_id = %s",
         (user_id,),
     )
+    tem = {
+        c["provider"]: {
+            "keyHint": c["key_hint"],
+            "createdAt": c["created_at"],
+            "source": "usuario",
+        }
+        for c in chaves
+    }
+    # O PISO DO PROJETO. Sem isto a tela dizia "nenhuma chave cadastrada"
+    # enquanto `ia.resolver()` respondia normalmente com a chave do `.env` --
+    # a tela mentia sobre um servico que estava funcionando.
+    if "gemini" not in tem and ia.CHAVE_SERVICO:
+        tem["gemini"] = {
+            "keyHint": ia.CHAVE_SERVICO[-4:],
+            "createdAt": None,
+            "source": "projeto",
+        }
     return {
         "provider": s["provider"],
         "modelClassification": s["model_classification"],
         "modelSwot": s["model_swot"],
-        "hasKeyByProvider": {
-            c["provider"]: {"keyHint": c["key_hint"], "createdAt": c["created_at"]}
-            for c in chaves
-        },
+        "hasKeyByProvider": tem,
     }
 
 
@@ -858,11 +933,29 @@ def apagar_chave_llm(provider: str, u=Depends(auth.usuario_atual)):
 # --------------------------------------------------- chaves de scraper (BYOK)
 @app.get("/scraper-keys")
 def listar_chaves_scraper(u=Depends(auth.usuario_atual)):
-    return db.varios(
+    linhas = db.varios(
         "select provider, key_hint, source, created_at, updated_at "
         "from public.user_scraper_keys where user_id = %s order by provider",
         (u["id"],),
     )
+    # Mesma correcao do `_settings_llm`: `coletores.chave()` usa a chave do
+    # `.env` como piso quando o usuario nao tem BYOK, entao a tela precisa
+    # dizer "ativo pela chave do projeto" em vez de "nao configurado".
+    ja = {l["provider"] for l in linhas}
+    piso = {
+        "firecrawl": coletores.CHAVE_FIRECRAWL,
+        "scrapecreators": coletores.CHAVE_SCRAPE,
+    }
+    for provedor, chave_do_projeto in piso.items():
+        if provedor not in ja and chave_do_projeto:
+            linhas.append({
+                "provider": provedor,
+                "key_hint": chave_do_projeto[-4:],
+                "source": "projeto",
+                "created_at": None,
+                "updated_at": None,
+            })
+    return sorted(linhas, key=lambda l: l["provider"])
 
 
 @app.post("/scraper-keys", status_code=201)

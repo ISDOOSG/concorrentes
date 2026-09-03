@@ -6,8 +6,10 @@ import { apiFetch } from "@/lib/api-client";
 import {
   adaptAd,
   adaptAlert,
+  adaptChange,
   adaptCompetitor,
   adaptSnapshot,
+  type ChangeRow,
 } from "./adapters";
 import type {
   Ad,
@@ -18,6 +20,7 @@ import type {
   AdsLinkSuggestion,
 } from "@/lib/ic-mock";
 import type {
+  CompetitorChange,
   CreateCompetitorInput,
   DataProvider,
   LLMProviderId,
@@ -122,6 +125,14 @@ export const apiProvider: DataProvider = {
 
   async deleteLlmKey(provider: LLMProviderId): Promise<LLMSettings> {
     return apiFetch(`/llm/keys/${provider}`, { method: "DELETE" });
+  },
+
+  // ----- Mudancas detectadas (aba Timeline) -----
+  async listChanges(competitorId: string, limit = 50): Promise<CompetitorChange[]> {
+    const rows = await apiFetch<ChangeRow[]>(
+      `/competitors/${competitorId}/changes?limit=${limit}`,
+    );
+    return rows.map(adaptChange);
   },
 
   // ----- Scraper keys (BYOK) -----

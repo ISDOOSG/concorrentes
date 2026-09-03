@@ -11,6 +11,7 @@ import { useAuthedUser } from "@/lib/use-authed-user";
 import { useMyProfile } from "@/lib/use-my-profile";
 import { useAlerts } from "@/lib/data/hooks/use-alerts";
 import { apiFetch, ApiError } from "@/lib/api-client";
+import { useUnreadAlertsCount } from "@/lib/data/hooks/use-alerts";
 
 export const Route = createFileRoute("/_authed/settings/equipe")({
   component: TeamPage,
@@ -41,6 +42,7 @@ function TeamPage() {
   const qc = useQueryClient();
   const authed = useAuthedUser();
   const alertsQ = useAlerts();
+  const naoLidos = useUnreadAlertsCount();
   const profileQ = useMyProfile();
   const [email, setEmail] = useState("");
 
@@ -100,7 +102,7 @@ function TeamPage() {
       <AppTopbar
         title="Configurações"
         subtitle="Sua conta · LLM · Monitoramento"
-        alertsCount={alertsQ.data?.length ?? 0}
+        alertsCount={naoLidos}
         trailing={
           authed ? (
             <UserMenu

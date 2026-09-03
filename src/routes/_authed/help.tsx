@@ -21,6 +21,7 @@ import { AppTopbar } from "@/components/ic/app-topbar";
 import { UserMenu } from "@/components/ic/user-menu";
 import { useAuthedUser } from "@/lib/use-authed-user";
 import { useAlerts } from "@/lib/data/hooks/use-alerts";
+import { useUnreadAlertsCount } from "@/lib/data/hooks/use-alerts";
 
 export const Route = createFileRoute("/_authed/help")({
   component: HelpPage,
@@ -530,6 +531,7 @@ function HelpPage() {
   const qc = useQueryClient();
   const authed = useAuthedUser();
   const alertsQ = useAlerts();
+  const naoLidos = useUnreadAlertsCount();
   const [openId, setOpenId] = useState<string | null>("getting-started");
 
   const handleLogout = async () => {
@@ -543,7 +545,7 @@ function HelpPage() {
       <AppTopbar
         title="Ajuda"
         subtitle="Guias passo-a-passo · Userguides"
-        alertsCount={alertsQ.data?.length ?? 0}
+        alertsCount={naoLidos}
         trailing={
           authed ? (
             <UserMenu
@@ -717,7 +719,7 @@ function HelpPage() {
           <HelpCircle size={16} strokeWidth={1.75} />
           <span>
             Não encontrou o que procurava? Use a busca no topo ou entre em
-            contato com o suporte da Viver de IA.
+            contato com o suporte do ImagoHub.
           </span>
         </div>
       </div>

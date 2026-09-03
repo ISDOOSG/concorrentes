@@ -51,6 +51,10 @@ export function IntegrationCard({ integration, status, onOpenHowTo }: Props) {
   };
 
   const isConfigured = status.configured;
+  // A chave do projeto (`.env` do servico) vale como conectado -- e o piso
+  // que `coletores.chave()` usa. O que ela nao e: chave do usuario. Nao se
+  // remove daqui e o botao passa a ser "usar a minha chave".
+  const doProjeto = status.source === "projeto";
 
   const handleTestAndSave = async () => {
     const trimmed = keyValue.trim();
@@ -152,6 +156,9 @@ export function IntegrationCard({ integration, status, onOpenHowTo }: Props) {
                   {status.source === "lovable_connector" && (
                     <span style={{ marginLeft: 4 }}>via Lovable</span>
                   )}
+                  {doProjeto && (
+                    <span style={{ marginLeft: 4 }}>chave do projeto</span>
+                  )}
                 </span>
               ) : (
                 <span
@@ -234,9 +241,13 @@ export function IntegrationCard({ integration, status, onOpenHowTo }: Props) {
               }
               onClick={() => setEditing(true)}
             >
-              {isConfigured ? "Trocar chave" : "Colar API key"}
+              {doProjeto
+                ? "Usar a minha chave"
+                : isConfigured
+                  ? "Trocar chave"
+                  : "Colar API key"}
             </button>
-            {isConfigured && (
+            {isConfigured && !doProjeto && (
               <button
                 type="button"
                 className="ic-iconbtn"

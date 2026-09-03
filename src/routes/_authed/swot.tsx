@@ -15,6 +15,7 @@ import { useAlerts } from "@/lib/data/hooks/use-alerts";
 import { useSwot, useGenerateSwot } from "@/lib/data/hooks/use-swot";
 import { toastDataError } from "@/lib/data/error-toast";
 import type { SwotItem } from "@/lib/ic-mock";
+import { useUnreadAlertsCount } from "@/lib/data/hooks/use-alerts";
 
 export const Route = createFileRoute("/_authed/swot")({
   component: SwotPage,
@@ -26,6 +27,7 @@ function SwotPage() {
   const authed = useAuthedUser();
   const competitorsQ = useCompetitors();
   const alertsQ = useAlerts();
+  const naoLidos = useUnreadAlertsCount();
   const [selected, setSelected] = useState<string | undefined>(undefined);
   const swotQ = useSwot(selected);
   const genMut = useGenerateSwot();
@@ -51,7 +53,7 @@ function SwotPage() {
       <AppTopbar
         title="Análise SWOT"
         subtitle="Gerada por IA"
-        alertsCount={alertsQ.data?.length ?? 0}
+        alertsCount={naoLidos}
         trailing={
           authed ? (
             <UserMenu

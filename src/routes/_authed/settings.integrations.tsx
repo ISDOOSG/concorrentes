@@ -13,6 +13,7 @@ import { useScraperKeys } from "@/lib/data/hooks/use-scraper-keys";
 import { INTEGRATIONS, INTEGRATION_LIST } from "@/content/integrations";
 import type { ScraperProviderId, ScraperKeyInfo } from "@/lib/data/types";
 import { SettingsSubnav } from "@/components/ic/settings-subnav";
+import { useUnreadAlertsCount } from "@/lib/data/hooks/use-alerts";
 
 export const Route = createFileRoute("/_authed/settings/integrations")({
   component: IntegrationsPage,
@@ -23,6 +24,7 @@ function IntegrationsPage() {
   const qc = useQueryClient();
   const authed = useAuthedUser();
   const alertsQ = useAlerts();
+  const naoLidos = useUnreadAlertsCount();
   const keysQ = useScraperKeys();
   const [openId, setOpenId] = useState<ScraperProviderId | null>(null);
 
@@ -46,7 +48,7 @@ function IntegrationsPage() {
       <AppTopbar
         title="Configurações"
         subtitle="Sua conta · LLM · Monitoramento"
-        alertsCount={alertsQ.data?.length ?? 0}
+        alertsCount={naoLidos}
         trailing={
           authed ? (
             <UserMenu

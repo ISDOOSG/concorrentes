@@ -3,13 +3,10 @@ import { Link } from "@tanstack/react-router";
 import {
   ArrowLeft,
   ExternalLink,
-  Download,
   Sparkles,
   TrendingUp,
   TrendingDown,
   Check,
-  LayoutGrid,
-  GitCompare,
   Inbox,
   Plug,
   FlaskConical,
@@ -39,7 +36,8 @@ import { MockScreenshot } from "./mock-screenshot";
 import { AdsTab } from "./ads-tab";
 import { LinkAdsDialog } from "./link-ads-dialog";
 import { SocialTab } from "./social-tab";
-import { useLatestSnapshot } from "@/lib/data/hooks/use-snapshots";
+import { useLatestSnapshot, useSnapshots } from "@/lib/data/hooks/use-snapshots";
+import { useChanges } from "@/lib/data/hooks/use-changes";
 import { SeoAiAnalysis } from "./seo-ai-analysis";
 import type { Snapshot } from "@/lib/ic-mock";
 
@@ -53,6 +51,18 @@ type Props = {
 // dados ricos pré-fabricados. Para qualquer outro competitor (real ou
 // user-created sem crawl bem-sucedido) mostramos empty states em vez de
 // reaproveitar mock data hardcoded.
+/** Data e hora no formato brasileiro. Estava duplicada dentro de um unico
+ *  componente; a aba de historico visual precisou da mesma regra. */
+function fmtDate(iso: string): string {
+  return new Date(iso).toLocaleString("pt-BR", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
 function isSeedWithMockData(comp: Competitor): boolean {
   return SEED_COMPETITORS.some((s) => s.id === comp.id);
 }
@@ -182,10 +192,6 @@ export function CompetitorDetail({ comp, onBack, onShowCrawlError }: Props) {
           <ExternalLink size={12} />
           Abrir site
         </a>
-        <button type="button" className="ic-btn ic-btn-secondary">
-          <Download size={12} />
-          Exportar
-        </button>
       </div>
 
 
@@ -401,14 +407,6 @@ function RealOverview({
   const prices = Array.isArray(sd.prices) ? sd.prices : [];
   const ctas = Array.isArray(sd.ctas) ? sd.ctas : [];
   const h1 = typeof sd.h1 === "string" ? sd.h1 : null;
-  const fmtDate = (iso: string) =>
-    new Date(iso).toLocaleString("pt-BR", {
-      day: "2-digit",
-      month: "2-digit",
-      year: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-    });
   const rawPreview = (snapshot.raw_text ?? "")
     .replace(/```[\s\S]*?```/g, "")
     .replace(/!\[[^\]]*\]\([^)]*\)/g, "")
@@ -780,20 +778,90 @@ function OverviewTab({ comp }: { comp: Competitor }) {
   );
 }
 
+/**
+ * Mostra o `diff` que o comparador gravou junto da mudanca.
+ *
+ * O formato vem de `coletores.comparar()`: sempre tem `field`, e conforme o
+ * campo traz `from`/`to` (h1, titulo) ou `added`/`removed` (precos, CTAs).
+ * Qualquer outra forma cai no JSON cru em vez de sumir da tela.
+ */
+function DiffDaMudanca({ diff }: { diff: Record<string, unknown> | null }) {
+  if (!diff) return null;
+  const de = diff.from as string | undefined;
+  const para = diff.to as string | undefined;
+  const entraram = diff.added as string[] | undefined;
+  const sairam = diff.removed as string[] | undefined;
+
+  if (de === undefined && para === undefined && !entraram && !sairam) {
+    return (
+      <pre
+        style={{
+          marginTop: 8,
+          fontSize: 11,
+          background: "var(--via-bg-2)",
+          padding: 10,
+          borderRadius: 8,
+          overflowX: "auto",
+        }}
+      >
+        {JSON.stringify(diff, null, 2)}
+      </pre>
+    );
+  }
+
+  return (
+    <div className="ic-diff" style={{ marginTop: 8 }}>
+      <div>
+        <span className="ic-diff-label">Antes</span>
+        {de !== undefined && de !== "" ? de : null}
+        {sairam?.length ? sairam.join(" · ") : null}
+        {de === undefined && !sairam?.length ? (
+          <em style={{ color: "var(--via-color-text-muted)" }}>nada</em>
+        ) : null}
+      </div>
+      <div>
+        <span className="ic-diff-label">Depois</span>
+        <strong>
+          {para !== undefined && para !== "" ? para : null}
+          {entraram?.length ? entraram.join(" · ") : null}
+        </strong>
+        {para === undefined && !entraram?.length ? (
+          <em style={{ color: "var(--via-color-text-muted)" }}>nada</em>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
 function TimelineTab({ comp }: { comp: Competitor }) {
-  if (!isSeedWithMockData(comp)) {
+  // Le `public.changes` de verdade. Ate 03/09 esta aba tinha apenas dois
+  // estados -- vitrine fixa para os concorrentes-semente, ou "aguardando"
+  // para todo o resto -- e nenhum crawl, em nenhuma quantidade, mudava isso.
+  const changesQ = useChanges(comp.id);
+  const itens = changesQ.data ?? [];
+
+  if (changesQ.isLoading) {
+    return (
+      <div style={{ padding: 40, textAlign: "center", color: "var(--via-color-text-muted)", fontSize: 13 }}>
+        Carregando mudanças…
+      </div>
+    );
+  }
+
+  if (itens.length === 0) {
     return (
       <NoDataYet
         comp={comp}
-        title="Aguardando próximo crawl"
-        description="A timeline compara crawls consecutivos. Mudanças (preço, copy, features, design, conteúdo) aparecem aqui após o segundo crawl que tiver diff em relação ao primeiro. O scheduler diário roda às 03h UTC."
+        title="Nenhuma mudança detectada ainda"
+        description="A timeline compara cada crawl com o anterior. Enquanto o conteúdo da página não mudar, não há o que listar aqui — um site estável fica com esta aba vazia, e isso é o resultado correto. O crawl automático roda todo dia às 03h50."
       />
     );
   }
+
   return (
     <div className="ic-timeline">
-      {TIMELINE_RD.map((it, i) => (
-        <div key={i} className={cn("ic-tl-item", it.severity)}>
+      {itens.map((it) => (
+        <div key={it.id} className={cn("ic-tl-item", it.severity)}>
           <div className="ic-tl-date">{it.date}</div>
           <div
             style={{
@@ -811,22 +879,7 @@ function TimelineTab({ comp }: { comp: Competitor }) {
               {it.label}
             </span>
           </div>
-          {i === 0 && (
-            <div className="ic-diff" style={{ marginTop: 8 }}>
-              <div>
-                <span className="ic-diff-label">Antes</span>
-                Plano Marketing — R$ 329/mês
-                <br />
-                15 usuários · 1.500 leads inclusos
-              </div>
-              <div>
-                <span className="ic-diff-label">Depois</span>
-                <strong>Plano RD Pro — R$ 199/mês</strong>
-                <br />
-                10 usuários · 3.000 leads · IA generativa nativa
-              </div>
-            </div>
-          )}
+          <DiffDaMudanca diff={it.diff} />
         </div>
       ))}
     </div>
@@ -834,13 +887,67 @@ function TimelineTab({ comp }: { comp: Competitor }) {
 }
 
 function ScreenshotsTab({ comp }: { comp: Competitor }) {
+  // Lista os snapshots de verdade. A imagem em si ainda nao existe: o
+  // `screenshot_path` fica NULL porque nao ha onde guardar o PNG nesta
+  // instalacao -- a edge function da Lovable subia para o Storage da
+  // Supabase, que nao veio junto. O texto abaixo diz isso em vez de
+  // prometer captura.
+  const snapsQ = useSnapshots(comp.id, 30);
+  const snaps = snapsQ.data ?? [];
+  const temImagem = snaps.some((s) => Boolean(s.screenshot_path));
+
   if (!isSeedWithMockData(comp)) {
+    if (snapsQ.isLoading) {
+      return (
+        <div style={{ padding: 40, textAlign: "center", color: "var(--via-color-text-muted)", fontSize: 13 }}>
+          Carregando histórico…
+        </div>
+      );
+    }
+    if (snaps.length === 0) {
+      return (
+        <NoDataYet
+          comp={comp}
+          title="Nenhuma coleta ainda"
+          description="Cada crawl guarda uma versão do conteúdo da página. Assim que a primeira coleta terminar, ela aparece aqui."
+        />
+      );
+    }
     return (
-      <NoDataYet
-        comp={comp}
-        title="Screenshots aparecem após o crawl"
-        description="A cada crawl, o Firecrawl gera um screenshot da página inicial e armazenamos no Storage. O comparador antes/depois fica disponível quando há 2+ capturas."
-      />
+      <div>
+        <div style={{ marginBottom: 16, fontSize: 13, color: "var(--via-color-text-muted)" }}>
+          <strong style={{ color: "var(--via-navy)" }}>
+            {snaps.length} {snaps.length === 1 ? "coleta" : "coletas"}
+          </strong>{" "}
+          registradas
+          {!temImagem ? (
+            <>
+              {" "}· sem captura de imagem: este ambiente ainda não tem onde
+              guardar o PNG, então o histórico é de conteúdo, não visual
+            </>
+          ) : null}
+        </div>
+        <div className="ic-timeline">
+          {snaps.map((snap) => (
+            <div key={snap.id} className="ic-tl-item low">
+              <div className="ic-tl-date">{fmtDate(snap.crawled_at)}</div>
+              <div className="ic-tl-label">
+                {snap.structured_data?.h1 ?? "sem H1 na página"}
+                {snap.structured_data?.prices?.length ? (
+                  <> · preços: {snap.structured_data.prices.join(" · ")}</>
+                ) : null}
+              </div>
+              {snap.screenshot_path ? (
+                <img
+                  src={snap.screenshot_path}
+                  alt={`Captura de ${comp.name} em ${fmtDate(snap.crawled_at)}`}
+                  style={{ marginTop: 8, maxWidth: "100%", borderRadius: 8 }}
+                />
+              ) : null}
+            </div>
+          ))}
+        </div>
+      </div>
     );
   }
   const dates = ["24/04", "17/04", "10/04", "03/04"];
@@ -863,16 +970,6 @@ function ScreenshotsTab({ comp }: { comp: Competitor }) {
         <div style={{ fontSize: 13, color: "var(--via-color-text-muted)" }}>
           <strong style={{ color: "var(--via-navy)" }}>4 capturas</strong> nos
           últimos 30 dias · próxima captura em 14h
-        </div>
-        <div style={{ display: "flex", gap: 6 }}>
-          <button type="button" className="ic-btn ic-btn-secondary">
-            <LayoutGrid size={12} />
-            Grid
-          </button>
-          <button type="button" className="ic-btn ic-btn-ghost">
-            <GitCompare size={12} />
-            Comparar
-          </button>
         </div>
       </div>
       <div className="ic-shots">

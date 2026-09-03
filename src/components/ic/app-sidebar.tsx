@@ -71,7 +71,9 @@ export function AppSidebar({
   counts,
   userInitials = "AC",
   userName = "Sua conta",
-  userPlan = "Plano Free",
+  // Sem padrao: o plano vem do perfil no banco. Um rotulo fixo aqui mentiria
+  // para todo mundo que nao esta no plano escrito no codigo.
+  userPlan,
 }: Props) {
   return (
     <aside className="ic-sidebar">
@@ -80,7 +82,7 @@ export function AppSidebar({
         <div>
           <div className="ic-brand-name">Análise de</div>
           <div className="ic-brand-name">Concorrentes</div>
-          <div className="ic-brand-sub">Viver de IA</div>
+          <div className="ic-brand-sub">ImagoHub</div>
         </div>
       </div>
       <nav className="ic-nav">
@@ -112,7 +114,7 @@ export function AppSidebar({
         <div className="ic-avatar">{userInitials}</div>
         <div>
           <div className="ic-avatar-name">{userName}</div>
-          <div className="ic-avatar-role">{userPlan}</div>
+          {userPlan && <div className="ic-avatar-role">{userPlan}</div>}
         </div>
       </div>
     </aside>

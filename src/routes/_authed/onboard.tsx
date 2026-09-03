@@ -9,6 +9,7 @@ import { UserMenu } from "@/components/ic/user-menu";
 import { useAuthedUser } from "@/lib/use-authed-user";
 import { useAlerts } from "@/lib/data/hooks/use-alerts";
 import { useCreateCompetitor } from "@/lib/data/hooks/use-competitors";
+import { useUnreadAlertsCount } from "@/lib/data/hooks/use-alerts";
 
 export const Route = createFileRoute("/_authed/onboard")({
   component: OnboardPage,
@@ -21,6 +22,7 @@ function OnboardPage() {
   const qc = useQueryClient();
   const authed = useAuthedUser();
   const alertsQ = useAlerts();
+  const naoLidos = useUnreadAlertsCount();
   const createMut = useCreateCompetitor();
 
   const [step, setStep] = useState<0 | 1 | 2>(0);
@@ -62,7 +64,7 @@ function OnboardPage() {
       <AppTopbar
         title="Adicionar concorrente"
         subtitle="Onboarding"
-        alertsCount={alertsQ.data?.length ?? 0}
+        alertsCount={naoLidos}
         trailing={
           authed ? (
             <UserMenu

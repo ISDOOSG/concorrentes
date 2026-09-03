@@ -9,7 +9,9 @@ import {
   type Ad,
   type Snapshot,
 } from "@/lib/ic-mock";
+import { TIMELINE_RD } from "@/lib/ic-mock/timeline";
 import type {
+  CompetitorChange,
   CreateCompetitorInput,
   DataProvider,
   LLMProviderId,
@@ -577,6 +579,25 @@ export const mockProvider: DataProvider = {
     const s = readState();
     const list = s.snapshots[competitorId] ?? [];
     return delay(list.slice(0, limit), 200);
+  },
+
+  // A timeline simulada usa a mesma forma que a API devolve depois de
+  // adaptada, para que a aba nao precise saber qual provider esta ativo.
+  async listChanges(
+    competitorId: string,
+    limit: number = 50,
+  ): Promise<CompetitorChange[]> {
+    const itens = TIMELINE_RD.slice(0, limit).map((it, i) => ({
+      id: `${competitorId}-mock-${i}`,
+      competitorId,
+      detectedAt: new Date(Date.now() - i * 86_400_000).toISOString(),
+      date: it.date,
+      type: it.type,
+      severity: it.severity,
+      label: it.label,
+      diff: null,
+    }));
+    return delay(itens, 200);
   },
 
   async listAds(competitorId: string): Promise<Ad[]> {

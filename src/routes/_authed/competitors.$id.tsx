@@ -13,6 +13,7 @@ import {
 } from "@/lib/data/hooks/use-competitors";
 import { useAlerts } from "@/lib/data/hooks/use-alerts";
 import { toastDataError } from "@/lib/data/error-toast";
+import { useUnreadAlertsCount } from "@/lib/data/hooks/use-alerts";
 
 export const Route = createFileRoute("/_authed/competitors/$id")({
   component: CompetitorDetailPage,
@@ -25,6 +26,7 @@ function CompetitorDetailPage() {
   const authed = useAuthedUser();
   const compQ = useCompetitor(id);
   const alertsQ = useAlerts();
+  const naoLidos = useUnreadAlertsCount();
   const crawlMut = useTriggerCrawl();
   const [errorOpen, setErrorOpen] = useState(false);
 
@@ -41,7 +43,7 @@ function CompetitorDetailPage() {
       <AppTopbar
         title={c?.name ?? "Concorrente"}
         subtitle="Concorrente"
-        alertsCount={alertsQ.data?.length ?? 0}
+        alertsCount={naoLidos}
         trailing={
           authed ? (
             <UserMenu
