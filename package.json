@@ -15,7 +15,9 @@
     "test:api": "api/venv/bin/python -m pytest api/tests/",
     "tipos": "tsc --noEmit",
     "integridade": "api/venv/bin/python scripts/validar_integridade.py",
-    "verificar": "npm run tipos && npm run integridade && npm run test && npm run test:api"
+    "verificar": "npm run tipos && npm run integridade && npm run test && npm run test:api",
+    "test:navegador": "bash scripts/testar_navegador.sh",
+    "verificar:completo": "npm run verificar && npm run test:navegador"
   },
   "dependencies": {
     "@cloudflare/vite-plugin": "^1.25.5",

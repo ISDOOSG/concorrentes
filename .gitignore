@@ -55,3 +55,8 @@ api/venv/
 # bytecode da API Python
 __pycache__/
 *.py[cod]
+
+# Playwright (testes-navegador)
+test-results/
+playwright-report/
+blob-report/
