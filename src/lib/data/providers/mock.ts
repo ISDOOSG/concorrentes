@@ -10,8 +10,11 @@ import {
   type Snapshot,
 } from "@/lib/ic-mock";
 import { TIMELINE_RD } from "@/lib/ic-mock/timeline";
+import type { SocialPlatform } from "@/lib/social/types";
 import type {
   CompetitorChange,
+  TeamInvite,
+  TeamMember,
   CreateCompetitorInput,
   DataProvider,
   LLMProviderId,
@@ -583,6 +586,107 @@ export const mockProvider: DataProvider = {
 
   // A timeline simulada usa a mesma forma que a API devolve depois de
   // adaptada, para que a aba nao precise saber qual provider esta ativo.
+  // ----- SEO, Social e Time -----
+  // Estes tres blocos falavam com a API direto, sem passar pelo contrato.
+  // O efeito pratico era o modo demonstracao: as abas de SEO e Redes e a
+  // tela de Equipe tentavam a rede mesmo em demo, enquanto todo o resto do
+  // painel usava dado simulado.
+  async getSeoAnalysis() {
+    return delay(null, 200);
+  },
+
+  async generateSeoAnalysis(): Promise<never> {
+    throw new Error(
+      "Modo demonstração: a análise de SEO usa IA de verdade e não roda aqui.",
+    );
+  },
+
+  async getLatestSocialSnapshot(competitorId: string, platform: SocialPlatform) {
+    return delay(
+      {
+        id: `${competitorId}-social-mock`,
+        competitorId,
+        platform,
+        handle: "@simulado",
+        fetchedAt: new Date().toISOString(),
+        fetchedDate: new Date().toISOString().slice(0, 10),
+        followers: 18400,
+        following: 312,
+        postsCount: 640,
+        isVerified: false,
+        isBusiness: true,
+        bio: "Perfil simulado do modo demonstração.",
+        externalUrl: null,
+        category: "Marketing",
+        profilePicUrl: null,
+        recentPosts: [],
+      },
+      250,
+    );
+  },
+
+  async getSocialAnalysis() {
+    return delay(null, 200);
+  },
+
+  async fetchSocial() {
+    return delay(
+      {
+        ok: false as const,
+        error: "Modo demonstração: coleta de Instagram gasta crédito real.",
+      },
+      200,
+    );
+  },
+
+  async analyzeSocial() {
+    return delay(
+      {
+        ok: false as const,
+        error: "Modo demonstração: a análise de rede social usa IA de verdade.",
+      },
+      200,
+    );
+  },
+
+  async getInstagramHandles() {
+    return delay(
+      { handle: "@simulado", suggestion: null, lastFetchedAt: null },
+      200,
+    );
+  },
+
+  async setInstagramHandle() {
+    return delay(undefined, 150);
+  },
+
+  async listTeamMembers(): Promise<TeamMember[]> {
+    return delay(
+      [
+        {
+          id: "mock-admin",
+          full_name: "Você (demonstração)",
+          email: "voce@exemplo.com",
+          role: "admin",
+          created_at: new Date().toISOString(),
+        },
+      ],
+      200,
+    );
+  },
+
+  async listInvites(): Promise<TeamInvite[]> {
+    return delay([], 200);
+  },
+
+  async createInvite(): Promise<never> {
+    throw new Error("Modo demonstração: convite não é criado de verdade.");
+  },
+
+  async deleteInvite() {
+    return delay(undefined, 150);
+  },
+
   async listChanges(
     competitorId: string,
     limit: number = 50,

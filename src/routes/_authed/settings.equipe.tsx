@@ -1,5 +1,5 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { Copy, Mail, ShieldCheck, Trash2, UserPlus } from "lucide-react";
 import { toast } from "sonner";
@@ -10,27 +10,18 @@ import { SettingsSubnav } from "@/components/ic/settings-subnav";
 import { useAuthedUser } from "@/lib/use-authed-user";
 import { useMyProfile } from "@/lib/use-my-profile";
 import { useAlerts } from "@/lib/data/hooks/use-alerts";
-import { apiFetch, ApiError } from "@/lib/api-client";
+import { ApiError } from "@/lib/api-client";
+import {
+  useCreateInvite,
+  useDeleteInvite,
+  useInvites,
+  useTeamMembers,
+} from "@/lib/data/hooks/use-team";
 import { useUnreadAlertsCount } from "@/lib/data/hooks/use-alerts";
 
 export const Route = createFileRoute("/_authed/settings/equipe")({
   component: TeamPage,
 });
-
-type Member = {
-  id: string;
-  full_name: string | null;
-  email: string | null;
-  role: string;
-  created_at: string;
-};
-
-type Invite = {
-  id: string;
-  email: string;
-  created_at: string;
-  accepted_at: string | null;
-};
 
 function inviteLink(id: string): string {
   if (typeof window === "undefined") return "";
@@ -48,43 +39,31 @@ function TeamPage() {
 
   const isAdmin = profileQ.data?.role === "admin";
 
-  const membersQ = useQuery({
-    queryKey: ["team-members"],
-    queryFn: () => apiFetch<Member[]>("/team/members"),
-    enabled: isAdmin,
-  });
+  const membersQ = useTeamMembers(isAdmin);
+  const invitesQ = useInvites(isAdmin);
 
-  const invitesQ = useQuery({
-    queryKey: ["team-invites"],
-    queryFn: () => apiFetch<Invite[]>("/team/invites"),
-    enabled: isAdmin,
-  });
+  const inviteMut = useCreateInvite();
+  const removeInviteMut = useDeleteInvite();
 
-  const inviteMut = useMutation({
-    mutationFn: (target: string) =>
-      apiFetch<{ id: string; email: string }>("/team/invites", {
-        method: "POST",
-        body: JSON.stringify({ email: target }),
-      }),
-    onSuccess: (d) => {
-      const link = inviteLink(d.id);
-      navigator.clipboard?.writeText(link).catch(() => {});
-      toast.success(
-        `Convite criado para ${d.email}. O link já foi copiado — envie você mesmo.`,
-      );
-      setEmail("");
-      qc.invalidateQueries({ queryKey: ["team-invites"] });
-    },
-    onError: (e) =>
-      toast.error(e instanceof ApiError ? e.message : "Falha ao criar o convite"),
-  });
+  const criarConvite = (target: string) =>
+    inviteMut.mutate(target, {
+      onSuccess: (d) => {
+        const link = inviteLink(d.id);
+        navigator.clipboard?.writeText(link).catch(() => {});
+        toast.success(
+          `Convite criado para ${d.email}. O link já foi copiado — envie você mesmo.`,
+        );
+        setEmail("");
+      },
+      onError: (e) =>
+        toast.error(e instanceof ApiError ? e.message : "Falha ao criar o convite"),
+    });
 
-  const removeInviteMut = useMutation({
-    mutationFn: (id: string) => apiFetch(`/team/invites/${id}`, { method: "DELETE" }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["team-invites"] }),
-    onError: (e) =>
-      toast.error(e instanceof ApiError ? e.message : "Falha ao remover o convite"),
-  });
+  const removerConvite = (id: string) =>
+    removeInviteMut.mutate(id, {
+      onError: (e) =>
+        toast.error(e instanceof ApiError ? e.message : "Falha ao remover o convite"),
+    });
 
   const copyInvite = (id: string) => {
     navigator.clipboard?.writeText(inviteLink(id)).catch(() => {});
@@ -146,7 +125,7 @@ function TeamPage() {
               onSubmit={(e) => {
                 e.preventDefault();
                 const t = email.trim();
-                if (t) inviteMut.mutate(t);
+                if (t) criarConvite(t);
               }}
               style={{ display: "flex", gap: 10, maxWidth: 460 }}
             >
@@ -208,7 +187,7 @@ function TeamPage() {
                         className="ic-iconbtn"
                         title="Remover convite"
                         aria-label={`Remover convite de ${inv.email}`}
-                        onClick={() => removeInviteMut.mutate(inv.id)}
+                        onClick={() => removerConvite(inv.id)}
                       >
                         <Trash2 size={14} />
                       </button>

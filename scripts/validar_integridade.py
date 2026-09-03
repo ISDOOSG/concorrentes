@@ -179,6 +179,10 @@ def verificar_controles_inertes(problemas):
         if not p.endswith(".tsx"):
             continue
         rel = os.path.relpath(p, SRC).replace("\\", "/")
+        # O proprio teste monta <button> sem handler de proposito, para
+        # afirmar que o botao inerte SUMIU. Varrer o teste e se morder.
+        if rel.startswith("testes/") or ".test." in rel:
+            continue
         texto = ler(p)
         for m in re.finditer(r"<button\b((?:[^>]|\n)*?)>", texto):
             atributos = m.group(1)

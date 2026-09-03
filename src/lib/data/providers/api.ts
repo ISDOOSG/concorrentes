@@ -19,10 +19,15 @@ import type {
   Swot,
   AdsLinkSuggestion,
 } from "@/lib/ic-mock";
+import { socialApi } from "@/lib/social/api";
+import type { SocialPlatform } from "@/lib/social/types";
+import type { SeoAnalysis } from "@/lib/data/hooks/use-seo-analysis";
 import type {
   CompetitorChange,
   CreateCompetitorInput,
   DataProvider,
+  TeamInvite,
+  TeamMember,
   LLMProviderId,
   LLMSettings,
   LLMUseCase,
@@ -133,6 +138,65 @@ export const apiProvider: DataProvider = {
       `/competitors/${competitorId}/changes?limit=${limit}`,
     );
     return rows.map(adaptChange);
+  },
+
+  // ----- SEO -----
+  // Delega para as mesmas chamadas que o hook fazia direto: o que muda e o
+  // caminho (agora passa pelo contrato), nao o comportamento.
+  async getSeoAnalysis(competitorId: string): Promise<SeoAnalysis | null> {
+    // A API devolve null com 200 quando ainda nao ha analise -- nao 404.
+    return apiFetch<SeoAnalysis | null>(`/competitors/${competitorId}/seo`);
+  },
+
+  async generateSeoAnalysis(competitorId: string): Promise<SeoAnalysis> {
+    return apiFetch<SeoAnalysis>(`/competitors/${competitorId}/seo`, {
+      method: "POST",
+    });
+  },
+
+  // ----- Redes sociais -----
+  getLatestSocialSnapshot(competitorId: string, platform: SocialPlatform) {
+    return socialApi.getLatestSnapshot(competitorId, platform);
+  },
+
+  getSocialAnalysis(competitorId: string, platform: SocialPlatform) {
+    return socialApi.getLatestAnalysis(competitorId, platform);
+  },
+
+  fetchSocial(competitorId: string, platform: SocialPlatform) {
+    return socialApi.triggerFetch(competitorId, platform);
+  },
+
+  analyzeSocial(competitorId: string, platform: SocialPlatform) {
+    return socialApi.triggerAnalyze(competitorId, platform);
+  },
+
+  getInstagramHandles(competitorId: string) {
+    return socialApi.getInstagramHandles(competitorId);
+  },
+
+  setInstagramHandle(competitorId: string, handle: string | null) {
+    return socialApi.setInstagramHandle(competitorId, handle);
+  },
+
+  // ----- Time e convites -----
+  async listTeamMembers(): Promise<TeamMember[]> {
+    return apiFetch<TeamMember[]>("/team/members");
+  },
+
+  async listInvites(): Promise<TeamInvite[]> {
+    return apiFetch<TeamInvite[]>("/team/invites");
+  },
+
+  async createInvite(email: string): Promise<{ id: string; email: string }> {
+    return apiFetch<{ id: string; email: string }>("/team/invites", {
+      method: "POST",
+      body: JSON.stringify({ email }),
+    });
+  },
+
+  async deleteInvite(inviteId: string): Promise<void> {
+    await apiFetch(`/team/invites/${inviteId}`, { method: "DELETE" });
   },
 
   // ----- Scraper keys (BYOK) -----

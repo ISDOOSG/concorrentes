@@ -67,6 +67,23 @@ export type CompetitorChange = {
   diff: Record<string, unknown> | null;
 };
 
+/** Membro do time, como `GET /team/members` devolve. */
+export type TeamMember = {
+  id: string;
+  full_name: string | null;
+  email: string | null;
+  role: string;
+  created_at: string;
+};
+
+/** Convite pendente ou aceito, de `GET /team/invites`. */
+export type TeamInvite = {
+  id: string;
+  email: string;
+  created_at: string;
+  accepted_at: string | null;
+};
+
 export type CreateCompetitorInput = {
   name: string;
   url: string;
@@ -146,6 +163,47 @@ export type DataProvider = {
     competitorId: string,
     limit?: number,
   ): Promise<CompetitorChange[]>;
+
+  // ----- SEO (analise por IA a partir do ultimo snapshot) -----
+  // Estava fora do contrato: o hook chamava `apiFetch` direto. Consequencia
+  // concreta -- no modo demonstracao a aba nao tinha dado simulado e se
+  // comportava diferente do resto do painel.
+  getSeoAnalysis(
+    competitorId: string,
+  ): Promise<import("@/lib/data/hooks/use-seo-analysis").SeoAnalysis | null>;
+  generateSeoAnalysis(
+    competitorId: string,
+  ): Promise<import("@/lib/data/hooks/use-seo-analysis").SeoAnalysis>;
+
+  // ----- Redes sociais (Instagram via ScrapeCreators) -----
+  getLatestSocialSnapshot(
+    competitorId: string,
+    platform: import("@/lib/social/types").SocialPlatform,
+  ): Promise<import("@/lib/social/types").SocialSnapshot | null>;
+  getSocialAnalysis(
+    competitorId: string,
+    platform: import("@/lib/social/types").SocialPlatform,
+  ): Promise<import("@/lib/social/types").SocialAnalysis | null>;
+  fetchSocial(
+    competitorId: string,
+    platform: import("@/lib/social/types").SocialPlatform,
+  ): Promise<import("@/lib/social/types").FetchSocialResult>;
+  analyzeSocial(
+    competitorId: string,
+    platform: import("@/lib/social/types").SocialPlatform,
+  ): Promise<
+    { ok: true; analysisId: string | null } | { ok: false; error: string; status?: number }
+  >;
+  getInstagramHandles(
+    competitorId: string,
+  ): Promise<{ handle: string | null; suggestion: string | null; lastFetchedAt: string | null }>;
+  setInstagramHandle(competitorId: string, handle: string | null): Promise<void>;
+
+  // ----- Time e convites -----
+  listTeamMembers(): Promise<TeamMember[]>;
+  listInvites(): Promise<TeamInvite[]>;
+  createInvite(email: string): Promise<{ id: string; email: string }>;
+  deleteInvite(inviteId: string): Promise<void>;
 
   // ads (Meta + Google via ScrapeCreators)
   listAds(competitorId: string): Promise<import("@/lib/ic-mock").Ad[]>;

@@ -5,7 +5,7 @@
 // Os dois caminhos morreram com o projeto da Lovable; agora e /api, com o
 // mesmo token do resto do app.
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { apiFetch } from "@/lib/api-client";
+import { data } from "@/lib/data";
 
 export type SeoTargetKeyword = {
   keyword: string;
@@ -40,10 +40,7 @@ export function useSeoAnalysis(competitorId: string | undefined) {
     enabled: !!competitorId,
     queryFn: async (): Promise<SeoAnalysis | null> => {
       if (!competitorId) return null;
-      // A API devolve null (200) quando ainda nao ha analise -- nao 404.
-      return await apiFetch<SeoAnalysis | null>(
-        `/competitors/${competitorId}/seo`,
-      );
+      return data.getSeoAnalysis(competitorId);
     },
   });
 }
@@ -51,10 +48,7 @@ export function useSeoAnalysis(competitorId: string | undefined) {
 export function useTriggerSeoAnalysis() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (competitorId: string) =>
-      apiFetch<SeoAnalysis>(`/competitors/${competitorId}/seo`, {
-        method: "POST",
-      }),
+    mutationFn: (competitorId: string) => data.generateSeoAnalysis(competitorId),
     onSuccess: (analysis, id) => {
       // Atualiza o cache imediatamente para evitar piscar
       qc.setQueryData(KEY(id), analysis);

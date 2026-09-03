@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { socialApi } from "@/lib/social/api";
+import { data } from "@/lib/data";
 import type { SocialPlatform } from "@/lib/social/types";
 
 const KEYS = {
@@ -12,7 +12,7 @@ const KEYS = {
 export function useLatestSocialSnapshot(competitorId: string | undefined, platform: SocialPlatform = "instagram") {
   return useQuery({
     queryKey: competitorId ? KEYS.latest(competitorId, platform) : ["social-latest", "noop"],
-    queryFn: () => (competitorId ? socialApi.getLatestSnapshot(competitorId, platform) : Promise.resolve(null)),
+    queryFn: () => (competitorId ? data.getLatestSocialSnapshot(competitorId, platform) : Promise.resolve(null)),
     enabled: !!competitorId,
   });
 }
@@ -20,7 +20,7 @@ export function useLatestSocialSnapshot(competitorId: string | undefined, platfo
 export function useSocialAnalysis(competitorId: string | undefined, platform: SocialPlatform = "instagram") {
   return useQuery({
     queryKey: competitorId ? KEYS.analysis(competitorId, platform) : ["social-analysis", "noop"],
-    queryFn: () => (competitorId ? socialApi.getLatestAnalysis(competitorId, platform) : Promise.resolve(null)),
+    queryFn: () => (competitorId ? data.getSocialAnalysis(competitorId, platform) : Promise.resolve(null)),
     enabled: !!competitorId,
   });
 }
@@ -30,7 +30,7 @@ export function useInstagramHandles(competitorId: string | undefined) {
     queryKey: competitorId ? KEYS.handles(competitorId) : ["social-handles", "noop"],
     queryFn: () =>
       competitorId
-        ? socialApi.getInstagramHandles(competitorId)
+        ? data.getInstagramHandles(competitorId)
         : Promise.resolve({ handle: null, suggestion: null, lastFetchedAt: null }),
     enabled: !!competitorId,
   });
@@ -40,7 +40,7 @@ export function useFetchSocial() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (input: { competitorId: string; platform?: SocialPlatform }) =>
-      socialApi.triggerFetch(input.competitorId, input.platform ?? "instagram"),
+      data.fetchSocial(input.competitorId, input.platform ?? "instagram"),
     onSuccess: (_d, vars) => {
       const p = vars.platform ?? "instagram";
       qc.invalidateQueries({ queryKey: KEYS.snapshots(vars.competitorId, p) });
@@ -54,7 +54,7 @@ export function useAnalyzeSocial() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (input: { competitorId: string; platform?: SocialPlatform }) =>
-      socialApi.triggerAnalyze(input.competitorId, input.platform ?? "instagram"),
+      data.analyzeSocial(input.competitorId, input.platform ?? "instagram"),
     onSuccess: (_d, vars) => {
       const p = vars.platform ?? "instagram";
       qc.invalidateQueries({ queryKey: KEYS.analysis(vars.competitorId, p) });
@@ -66,7 +66,7 @@ export function useSetInstagramHandle() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (input: { competitorId: string; handle: string | null }) =>
-      socialApi.setInstagramHandle(input.competitorId, input.handle),
+      data.setInstagramHandle(input.competitorId, input.handle),
     onSuccess: (_d, vars) => {
       qc.invalidateQueries({ queryKey: KEYS.handles(vars.competitorId) });
     },
